@@ -14,6 +14,7 @@ import {
   ListMusic,
   Share2,
   ExternalLink,
+  X,
 } from 'lucide-react';
 import type { Playlist, MusicTrack } from '../types';
 
