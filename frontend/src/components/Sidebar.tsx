@@ -11,9 +11,7 @@ import {
   Pin,
   X,
   Play,
-  Compass,
   ListMusic,
-  User,
   ArrowRight,
   Settings,
 } from 'lucide-react';
@@ -56,7 +54,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [libraryFilter, setLibraryFilter] = useState<'all' | 'custom' | 'curated'>('all');
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchScope, setSearchScope] = useState<LibrarySearchScope>('all');
+  const [searchScope] = useState<LibrarySearchScope>('all');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 

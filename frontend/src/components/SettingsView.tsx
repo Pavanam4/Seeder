@@ -6,8 +6,6 @@ import {
   Volume2,
   Check,
   ChevronLeft,
-  VolumeX,
-  Volume1,
   Headphones,
   CheckCircle2,
 } from 'lucide-react';

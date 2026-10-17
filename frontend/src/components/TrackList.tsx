@@ -8,8 +8,6 @@ import {
   Music,
   Compass,
   ArrowRight,
-  Flame,
-  Radio,
 } from 'lucide-react';
 
 interface TrackListProps {

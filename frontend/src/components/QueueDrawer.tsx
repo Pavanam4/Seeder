@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, ListMusic, Trash2, Play, Music } from 'lucide-react';
+import { X, ListMusic, Play, Music } from 'lucide-react';
 import type { MusicTrack } from '../types';
 
 interface QueueDrawerProps {
@@ -42,6 +42,16 @@ export const QueueDrawer: React.FC<QueueDrawerProps> = ({
         </div>
 
         <div className="queue-header-actions">
+          {queue.length > 0 && (
+            <button
+              type="button"
+              className="queue-clear-action-btn"
+              onClick={onClearQueue}
+              title="Clear all queued tracks"
+            >
+              Clear
+            </button>
+          )}
           <button
             type="button"
             className="queue-close-action-btn"

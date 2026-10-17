@@ -10,8 +10,6 @@ import {
   ShieldCheck,
   Sparkles,
   Music,
-  Info,
-  Radio,
 } from 'lucide-react';
 import type { ThemePalette, AudioQuality } from '../types';
 

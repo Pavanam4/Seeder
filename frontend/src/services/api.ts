@@ -83,15 +83,16 @@ async function fetchFallbackSearch(query: string, limit: number, signal?: AbortS
             duration: `${mins}:${remSecs < 10 ? '0' : ''}${remSecs}`,
             durationSeconds: secs,
             thumbnailUrl: v.videoThumbnails?.[0]?.url || `https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg`,
-            provider: 'invidious-direct',
-            isExplicit: false
+            youtubeUrl: `https://www.youtube.com/watch?v=${v.videoId}`,
+            isEmbeddableCandidate: true,
+            source: 'invidious-direct'
           };
         });
         return {
           query,
           page: 1,
           limit,
-          totalResults: items.length,
+          totalReturned: items.length,
           hasMore: false,
           provider: 'invidious-direct',
           durationMs: 150,

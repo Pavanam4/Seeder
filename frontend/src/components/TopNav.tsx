@@ -9,8 +9,8 @@ import type { ThemePalette, ViewType } from '../types';
 
 interface TopNavProps {
   currentView: ViewType;
-  theme: ThemePalette;
-  onThemeChange: (theme: ThemePalette) => void;
+  theme?: ThemePalette;
+  onThemeChange?: (theme: ThemePalette) => void;
   onOpenSettings?: () => void;
   onGoBack?: () => void;
   onGoForward?: () => void;
@@ -20,8 +20,6 @@ interface TopNavProps {
 
 export const TopNav: React.FC<TopNavProps> = ({
   currentView,
-  theme,
-  onThemeChange,
   onOpenSettings,
   onGoBack,
   onGoForward,
