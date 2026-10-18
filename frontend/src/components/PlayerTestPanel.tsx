@@ -264,12 +264,22 @@ export const PlayerTestPanel = forwardRef<PlayerHandle, PlayerTestPanelProps>(
       applyLockedVolume();
     }, [volume, isMuted, audioNormalization, applyLockedVolume]);
 
-    // Chromium audio session keep-alive loop to prevent background tab throttling and pause
+    // Mobile Audio Session & Silent Keep-Alive loop to prevent browser throttling/kill
     const silentAudioRef = useRef<HTMLAudioElement | null>(null);
 
+    // Initialize iOS and Mobile Audio Session
+    useEffect(() => {
+      try {
+        if ('audioSession' in navigator) {
+          (navigator as any).audioSession.type = 'playback';
+        }
+      } catch (e) {}
+    }, []);
+
+    // Maintain continuous background audio privilege
     useEffect(() => {
       if (!silentAudioRef.current) {
-        // Inaudible 1-second silent WAV loop
+        // Continuous, inaudible 1-second silent WAV loop
         const audio = new Audio(
           'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAP8A/w=='
         );
@@ -285,26 +295,119 @@ export const PlayerTestPanel = forwardRef<PlayerHandle, PlayerTestPanelProps>(
       }
     }, [isPlaying]);
 
-    // Prevent auto-pausing when switching tabs or minimizing the browser window
+    // Native MediaSession API: Android notification shade, lock screen, iOS Control Center
     useEffect(() => {
-      const resumeIfActive = () => {
-        if (isPlayingRef.current && !userInitiatedPauseRef.current) {
-          setTimeout(() => {
+      if (!('mediaSession' in navigator) || !selectedTrack) return;
+
+      try {
+        navigator.mediaSession.metadata = new window.MediaMetadata({
+          title: selectedTrack.title || 'Playing Music',
+          artist: selectedTrack.artist || 'Unknown Artist',
+          album: selectedTrack.album || 'Seeder Music',
+          artwork: [
+            { src: selectedTrack.thumbnailUrl, sizes: '96x96', type: 'image/jpeg' },
+            { src: selectedTrack.thumbnailUrl, sizes: '128x128', type: 'image/jpeg' },
+            { src: selectedTrack.thumbnailUrl, sizes: '192x192', type: 'image/jpeg' },
+            { src: selectedTrack.thumbnailUrl, sizes: '256x256', type: 'image/jpeg' },
+            { src: selectedTrack.thumbnailUrl, sizes: '512x512', type: 'image/jpeg' },
+          ],
+        });
+
+        navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+
+        navigator.mediaSession.setActionHandler('play', () => {
+          userInitiatedPauseRef.current = false;
+          silentAudioRef.current?.play()?.catch(() => {});
+          try {
+            internalPlayerRef.current?.playVideo?.();
+          } catch (e) {}
+          if (!isPlayingRef.current) {
+            onTogglePlay();
+          }
+        });
+
+        navigator.mediaSession.setActionHandler('pause', () => {
+          userInitiatedPauseRef.current = true;
+          silentAudioRef.current?.pause();
+          try {
+            internalPlayerRef.current?.pauseVideo?.();
+          } catch (e) {}
+          if (isPlayingRef.current) {
+            onTogglePlay();
+          }
+        });
+
+        navigator.mediaSession.setActionHandler('previoustrack', () => {
+          onPrevTrack();
+        });
+
+        navigator.mediaSession.setActionHandler('nexttrack', () => {
+          onNextTrack();
+        });
+
+        navigator.mediaSession.setActionHandler('seekto', (details) => {
+          if (typeof details.seekTime === 'number') {
+            onSeek(details.seekTime);
             try {
-              internalPlayerRef.current?.playVideo?.();
+              internalPlayerRef.current?.seekTo?.(details.seekTime, true);
             } catch (e) {}
-          }, 80);
+          }
+        });
+      } catch (err) {
+        console.warn('MediaSession registration error:', err);
+      }
+    }, [selectedTrack, isPlaying, onTogglePlay, onPrevTrack, onNextTrack, onSeek]);
+
+    // Update MediaSession playback position
+    useEffect(() => {
+      if ('mediaSession' in navigator && duration > 0) {
+        try {
+          navigator.mediaSession.setPositionState?.({
+            duration: Math.max(duration, 0),
+            playbackRate: 1,
+            position: Math.min(Math.max(currentTime, 0), duration),
+          });
+        } catch (e) {}
+      }
+    }, [currentTime, duration]);
+
+    // Prevent auto-pausing when switching tabs, minimizing browser, or locking screen
+    useEffect(() => {
+      const keepPlayingOnBackground = () => {
+        if (isPlayingRef.current && !userInitiatedPauseRef.current) {
+          // Keep audio session alive on Android/iOS
+          silentAudioRef.current?.play()?.catch(() => {});
+          if ('mediaSession' in navigator) {
+            navigator.mediaSession.playbackState = 'playing';
+          }
+
+          // Aggressive recovery loop: counteract mobile browser background video suspension
+          const attemptResume = () => {
+            if (isPlayingRef.current && !userInitiatedPauseRef.current) {
+              try {
+                internalPlayerRef.current?.playVideo?.();
+              } catch (e) {}
+            }
+          };
+
+          attemptResume();
+          setTimeout(attemptResume, 80);
+          setTimeout(attemptResume, 250);
+          setTimeout(attemptResume, 600);
+          setTimeout(attemptResume, 1200);
         }
       };
 
-      document.addEventListener('visibilitychange', resumeIfActive);
-      window.addEventListener('blur', resumeIfActive);
-      window.addEventListener('focus', resumeIfActive);
+      document.addEventListener('visibilitychange', keepPlayingOnBackground);
+      window.addEventListener('blur', keepPlayingOnBackground);
+      window.addEventListener('focus', keepPlayingOnBackground);
+      window.addEventListener('pagehide', keepPlayingOnBackground);
 
       return () => {
-        document.removeEventListener('visibilitychange', resumeIfActive);
-        window.removeEventListener('blur', resumeIfActive);
-        window.removeEventListener('focus', resumeIfActive);
+        document.removeEventListener('visibilitychange', keepPlayingOnBackground);
+        window.removeEventListener('blur', keepPlayingOnBackground);
+        window.removeEventListener('focus', keepPlayingOnBackground);
+        window.removeEventListener('pagehide', keepPlayingOnBackground);
       };
     }, []);
 
@@ -413,11 +516,16 @@ export const PlayerTestPanel = forwardRef<PlayerHandle, PlayerTestPanelProps>(
         case 2:
           stateName = 'PAUSED';
           if (!userInitiatedPauseRef.current && isPlayingRef.current) {
-            // Unintended pause triggered by viewport resize, tab blur, or collapse
+            // Unintended pause triggered by tab switch, browser minimize, or viewport change
             try {
               internalPlayerRef.current?.playVideo?.();
-              return;
             } catch (e) {}
+
+            // In mobile / background tabs, NEVER report PAUSED if user didn't explicitly pause!
+            // Reporting PAUSED would set isPlaying to false, killing background audio and MediaSession.
+            if (document.hidden) {
+              return;
+            }
           }
           break;
         case 3:
@@ -707,6 +815,7 @@ export const PlayerTestPanel = forwardRef<PlayerHandle, PlayerTestPanelProps>(
       () => ({
         play: () => {
           userInitiatedPauseRef.current = false;
+          silentAudioRef.current?.play()?.catch(() => {});
           try {
             internalPlayerRef.current?.playVideo?.();
           } catch (e) {
@@ -715,6 +824,7 @@ export const PlayerTestPanel = forwardRef<PlayerHandle, PlayerTestPanelProps>(
         },
         pause: () => {
           userInitiatedPauseRef.current = true;
+          silentAudioRef.current?.pause();
           try {
             internalPlayerRef.current?.pauseVideo?.();
           } catch (e) {
