@@ -224,6 +224,8 @@ export function App() {
       synthwave: 'Synthwave Midnight Beats',
       lofi: 'Lo-Fi Chill Beats',
       all: 'Trending Global Music Charts',
+      music: 'Trending Popular Hits Songs',
+      podcasts: 'Popular English Hindi Malayalam Podcasts',
     };
 
     const targetQuery = languageQueryMap[musicLanguage] || 'Trending Global Music Charts';

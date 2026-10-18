@@ -45,6 +45,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
         <span className="mobile-nav-label">Your Library</span>
       </button>
 
+
       <button
         type="button"
         className="mobile-nav-item"

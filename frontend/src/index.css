@@ -8604,6 +8604,22 @@ button {
   transform: scale(1.03);
 }
 
+.lang-pill-mobile-name {
+  display: none;
+}
+
+.section-heading-mobile {
+  display: none;
+}
+
+.section-heading-desktop {
+  display: inline;
+}
+
+.media-card-type {
+  display: none;
+}
+
 /* 3. MOBILE SMARTPHONE STYLING (<= 768px) - MATCHING SPOTIFY MOBILE SPEC */
 @media (max-width: 768px) {
   /* Disable text selection and callouts on touch */
@@ -8743,9 +8759,9 @@ button {
   .home-compact-header {
     flex-direction: column !important;
     align-items: flex-start !important;
-    gap: 8px !important;
-    margin-bottom: 14px !important;
-    padding: 4px 2px 0 2px !important;
+    gap: 0 !important;
+    margin-bottom: 16px !important;
+    padding: 4px 0 0 0 !important;
   }
 
   .home-greeting-area {
@@ -8762,18 +8778,19 @@ button {
 
   .mobile-header-avatar {
     display: flex !important;
-    width: 34px !important;
-    height: 34px !important;
-    min-width: 34px !important;
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
     border-radius: 50% !important;
     background: #d97736 !important;
     color: #ffffff !important;
-    font-weight: 800 !important;
+    font-weight: 700 !important;
     font-size: 1.05rem !important;
     align-items: center !important;
     justify-content: center !important;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4) !important;
     flex-shrink: 0 !important;
+    cursor: pointer !important;
   }
 
   .home-lang-scroll-track {
@@ -8792,21 +8809,39 @@ button {
   }
 
   .lang-pill-item {
-    padding: 6px 14px !important;
-    border-radius: 20px !important;
-    font-size: 0.78rem !important;
+    height: 34px !important;
+    padding: 0 16px !important;
+    border-radius: 9999px !important;
+    font-size: 13.5px !important;
     font-weight: 600 !important;
-    background: rgba(255, 255, 255, 0.08) !important;
-    border: 1px solid rgba(255, 255, 255, 0.06) !important;
+    background: #2a2a2a !important;
+    border: none !important;
     color: #ffffff !important;
     flex-shrink: 0 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    cursor: pointer !important;
+    transition: background 0.15s ease, color 0.15s ease !important;
+  }
+
+  .lang-pill-item .lang-pill-icon {
+    display: none !important;
+  }
+
+  .lang-pill-item .lang-pill-name {
+    display: none !important;
+  }
+
+  .lang-pill-item .lang-pill-mobile-name {
+    display: inline !important;
   }
 
   .lang-pill-item.is-active {
-    background: var(--accent-primary) !important;
-    color: #120e0a !important;
+    background: #1ed760 !important;
+    color: #000000 !important;
     font-weight: 700 !important;
-    border-color: transparent !important;
+    border: none !important;
   }
 
   /* 2-Column Quick Access Grid (Exact Spotify Mobile Layout) */
@@ -8818,30 +8853,31 @@ button {
   }
 
   .quick-access-card {
-    height: 52px !important;
+    height: 56px !important;
     padding: 0 !important;
-    background: rgba(255, 255, 255, 0.08) !important;
-    border: 1px solid rgba(255, 255, 255, 0.05) !important;
-    border-radius: 6px !important;
+    background: #282828 !important;
+    border: none !important;
+    border-radius: 4px !important;
     overflow: hidden !important;
     display: flex !important;
     align-items: center !important;
-    gap: 8px !important;
+    gap: 0 !important;
     cursor: pointer !important;
     transition: background 0.15s ease !important;
   }
 
   .quick-access-card:active {
-    background: rgba(255, 255, 255, 0.14) !important;
-    transform: scale(0.98) !important;
+    background: #383838 !important;
+    transform: scale(0.99) !important;
   }
 
   .quick-card-thumb {
-    width: 52px !important;
-    height: 52px !important;
-    min-width: 52px !important;
-    border-radius: 0 !important;
+    width: 56px !important;
+    height: 56px !important;
+    min-width: 56px !important;
+    border-radius: 4px 0 0 4px !important;
     object-fit: cover !important;
+    flex-shrink: 0 !important;
   }
 
   .quick-card-thumb.liked-gradient-thumb {
@@ -8854,20 +8890,22 @@ button {
   .quick-card-info {
     flex: 1 !important;
     min-width: 0 !important;
-    padding-right: 8px !important;
+    padding: 0 10px !important;
     display: flex !important;
-    flex-direction: column !important;
-    justify-content: center !important;
+    align-items: center !important;
   }
 
   .quick-card-title {
-    font-size: 0.8rem !important;
+    font-size: 13px !important;
     font-weight: 700 !important;
     color: #ffffff !important;
-    white-space: nowrap !important;
+    line-height: 1.25 !important;
+    display: -webkit-box !important;
+    -webkit-line-clamp: 2 !important;
+    -webkit-box-orient: vertical !important;
     overflow: hidden !important;
-    text-overflow: ellipsis !important;
-    line-height: 1.2 !important;
+    word-break: break-word !important;
+    white-space: normal !important;
   }
 
   .quick-card-sub,
@@ -8877,32 +8915,50 @@ button {
 
   /* Home Section Rows & Horizontal Scroll Carousels */
   .home-section {
-    margin-bottom: 24px !important;
+    margin-bottom: 26px !important;
   }
 
   .home-section-header {
-    margin-bottom: 10px !important;
+    margin-bottom: 12px !important;
   }
 
   .home-section-title {
-    font-size: 1.15rem !important;
-    font-weight: 800 !important;
+    font-size: 22px !important;
+    font-weight: 700 !important;
     color: #ffffff !important;
-    gap: 8px !important;
+    letter-spacing: -0.04em !important;
+    margin: 18px 0 10px 0 !important;
+    line-height: 1.2 !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 0 !important;
   }
 
-  .home-section-sub {
-    font-size: 0.74rem !important;
-    color: #a1a1aa !important;
+  .section-title-icon {
+    display: none !important;
+  }
+
+  .section-heading-desktop {
+    display: none !important;
+  }
+
+  .section-heading-mobile {
+    display: inline !important;
+  }
+
+  .home-section-sub,
+  .section-see-all-btn {
+    display: none !important;
   }
 
   .home-cards-scroll {
     display: flex !important;
-    gap: 12px !important;
+    gap: 14px !important;
     overflow-x: auto !important;
-    padding-bottom: 6px !important;
+    padding-bottom: 8px !important;
     scrollbar-width: none !important;
     -webkit-overflow-scrolling: touch !important;
+    scroll-snap-type: x mandatory !important;
   }
 
   .home-cards-scroll::-webkit-scrollbar {
@@ -8910,51 +8966,83 @@ button {
   }
 
   .music-media-card {
-    width: 140px !important;
-    min-width: 140px !important;
+    width: 152px !important;
+    min-width: 152px !important;
     padding: 0 !important;
     background: transparent !important;
     border: none !important;
     box-shadow: none !important;
+    scroll-snap-align: start !important;
+    display: flex !important;
+    flex-direction: column !important;
   }
 
   .media-card-artwork {
-    width: 140px !important;
-    height: 140px !important;
+    width: 152px !important;
+    height: 152px !important;
     border-radius: 8px !important;
     overflow: hidden !important;
-    margin-bottom: 8px !important;
+    margin-bottom: 6px !important;
+    position: relative !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45) !important;
+    flex-shrink: 0 !important;
   }
 
   .media-card-img {
     width: 100% !important;
     height: 100% !important;
     object-fit: cover !important;
+    border-radius: 8px !important;
   }
 
   .media-card-hover-play {
     display: none !important;
   }
 
+  .media-card-duration {
+    display: none !important;
+  }
+
+  .media-card-meta {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 1px !important;
+    padding: 0 2px !important;
+  }
+
+  .media-card-type {
+    display: block !important;
+    font-size: 11px !important;
+    font-weight: 500 !important;
+    color: #b3b3b3 !important;
+    text-transform: capitalize !important;
+    margin-bottom: 2px !important;
+    letter-spacing: 0.01em !important;
+  }
+
   .media-card-title {
-    font-size: 0.82rem !important;
+    font-size: 13.5px !important;
     font-weight: 700 !important;
+    color: #ffffff !important;
     line-height: 1.25 !important;
     margin-bottom: 2px !important;
-    white-space: nowrap !important;
+    display: -webkit-box !important;
+    -webkit-line-clamp: 2 !important;
+    -webkit-box-orient: vertical !important;
     overflow: hidden !important;
-    text-overflow: ellipsis !important;
+    white-space: normal !important;
   }
 
   .media-card-artist {
-    font-size: 0.74rem !important;
-    color: #a1a1aa !important;
+    font-size: 12px !important;
+    font-weight: 400 !important;
+    color: #a7a7a7 !important;
     white-space: nowrap !important;
     overflow: hidden !important;
     text-overflow: ellipsis !important;
   }
 
-  /* 4. FLOATING DOCKED MINI PLAYER (Matching user screenshot) */
+  /* 4. FLOATING DOCKED MINI PLAYER (Exact Spotify Mobile Spec) */
   .pro-bottom-player {
     position: fixed !important;
     bottom: 64px !important;
@@ -8962,12 +9050,12 @@ button {
     right: 8px !important;
     height: 56px !important;
     z-index: 990 !important;
-    border-radius: 10px !important;
-    background: rgba(38, 22, 22, 0.96) !important;
+    border-radius: 8px !important;
+    background: #2e1713 !important;
     backdrop-filter: blur(20px) !important;
     -webkit-backdrop-filter: blur(20px) !important;
-    border: 1px solid rgba(255, 255, 255, 0.12) !important;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.65) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7) !important;
     padding: 0 10px !important;
     display: flex !important;
     align-items: center !important;
@@ -8975,11 +9063,11 @@ button {
   }
 
   [data-theme='cyber'] .pro-bottom-player {
-    background: rgba(28, 16, 42, 0.96) !important;
+    background: #23122c !important;
   }
 
   [data-theme='aurora'] .pro-bottom-player {
-    background: rgba(14, 28, 24, 0.96) !important;
+    background: #11261f !important;
   }
 
   .bottom-player-left {
@@ -8994,7 +9082,7 @@ button {
     width: 100% !important;
     display: flex !important;
     align-items: center !important;
-    gap: 8px !important;
+    gap: 10px !important;
     cursor: pointer !important;
   }
 
@@ -9002,7 +9090,7 @@ button {
     width: 40px !important;
     height: 40px !important;
     min-width: 40px !important;
-    border-radius: 6px !important;
+    border-radius: 4px !important;
     overflow: hidden !important;
   }
 
@@ -9026,20 +9114,23 @@ button {
   }
 
   .now-playing-song {
-    font-size: 0.84rem !important;
+    font-size: 13.5px !important;
     font-weight: 700 !important;
     color: #ffffff !important;
     white-space: nowrap !important;
     overflow: hidden !important;
     text-overflow: ellipsis !important;
+    line-height: 1.2 !important;
   }
 
   .now-playing-artist {
-    font-size: 0.72rem !important;
-    color: #d1d5db !important;
+    font-size: 11.5px !important;
+    font-weight: 400 !important;
+    color: #b3b3b3 !important;
     white-space: nowrap !important;
     overflow: hidden !important;
     text-overflow: ellipsis !important;
+    line-height: 1.2 !important;
   }
 
   /* Hide desktop action blocks on mobile */
@@ -9053,8 +9144,8 @@ button {
   .mobile-mini-player-actions {
     display: flex !important;
     align-items: center !important;
-    gap: 12px !important;
-    margin-left: 6px !important;
+    gap: 16px !important;
+    margin-left: 8px !important;
     flex-shrink: 0 !important;
   }
 
@@ -9066,8 +9157,9 @@ button {
     background: transparent !important;
     border: none !important;
     cursor: pointer !important;
-    padding: 6px !important;
-    border-radius: 50% !important;
+    padding: 0 !important;
+    width: 24px !important;
+    height: 24px !important;
     transition: transform 0.15s ease !important;
   }
 
@@ -9075,14 +9167,21 @@ button {
     transform: scale(0.9) !important;
   }
 
-  .mobile-mini-btn.is-liked {
-    color: var(--accent-primary) !important;
+  .spotify-green-check-badge {
+    width: 22px !important;
+    height: 22px !important;
+    border-radius: 50% !important;
+    background: #1ed760 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
   }
 
   .mobile-mini-play-btn {
-    width: 34px !important;
-    height: 34px !important;
-    background: rgba(255, 255, 255, 0.1) !important;
+    width: 26px !important;
+    height: 26px !important;
+    background: transparent !important;
+    border-radius: 0 !important;
   }
 
   /* Thin progress line at the bottom edge of floating mini player */
@@ -9092,19 +9191,19 @@ button {
     bottom: 0 !important;
     left: 0 !important;
     right: 0 !important;
-    height: 2.5px !important;
-    background: rgba(255, 255, 255, 0.12) !important;
-    border-radius: 0 0 10px 10px !important;
+    height: 2px !important;
+    background: rgba(255, 255, 255, 0.15) !important;
+    border-radius: 0 0 8px 8px !important;
     overflow: hidden !important;
   }
 
   .mobile-mini-progress-fill {
     height: 100% !important;
-    background: var(--accent-primary) !important;
+    background: #1ed760 !important;
     transition: width 0.25s linear !important;
   }
 
-  /* 5. FIXED MOBILE BOTTOM NAVIGATION BAR (Home, Search, Your Library, Create - NO PREMIUM BUTTON) */
+  /* 5. FIXED MOBILE BOTTOM NAVIGATION BAR (Home, Search, Your Library, Premium, Create) */
   .mobile-bottom-nav {
     display: flex !important;
     position: fixed !important;
@@ -9112,14 +9211,13 @@ button {
     left: 0 !important;
     right: 0 !important;
     height: 58px !important;
-    background: rgba(12, 10, 8, 0.98) !important;
-    backdrop-filter: blur(20px) !important;
-    -webkit-backdrop-filter: blur(20px) !important;
+    background: #000000 !important;
     border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
     align-items: center !important;
     justify-content: space-around !important;
     z-index: 999 !important;
     padding: 0 4px !important;
+    padding-bottom: env(safe-area-inset-bottom, 0px) !important;
   }
 
   .mobile-nav-item {
@@ -9129,13 +9227,13 @@ button {
     flex-direction: column !important;
     align-items: center !important;
     justify-content: center !important;
-    gap: 3px !important;
-    color: #a1a1aa !important;
+    gap: 4px !important;
+    color: #a7a7a7 !important;
     background: transparent !important;
     border: none !important;
     cursor: pointer !important;
     transition: color 0.15s ease !important;
-    padding: 6px 0 !important;
+    padding: 4px 0 !important;
   }
 
   .mobile-nav-item.is-active {
@@ -9155,9 +9253,15 @@ button {
   }
 
   .mobile-nav-label {
-    font-size: 0.68rem !important;
-    font-weight: 600 !important;
+    font-size: 10.5px !important;
+    font-weight: 500 !important;
     letter-spacing: -0.01em !important;
+    color: #a7a7a7 !important;
+  }
+
+  .mobile-nav-item.is-active .mobile-nav-label {
+    color: #ffffff !important;
+    font-weight: 700 !important;
   }
 
   /* 6. EXPANDED THEATER & VIDEO VIEW ON MOBILE (ZERO OVERLAP, IDENTICAL VOLUME POSITION) */
@@ -9168,35 +9272,36 @@ button {
     display: flex !important;
     flex-direction: column !important;
     justify-content: space-between !important;
-    padding: 10px 14px max(8px, env(safe-area-inset-bottom, 8px)) 14px !important;
+    padding: 12px 18px max(44px, env(safe-area-inset-bottom, 44px)) 18px !important;
   }
 
   /* Center Stage in Mobile (Flex 1, never overflows viewport) */
   .theater-center-stage {
     min-height: 0 !important;
-    height: 100% !important;
-    flex: 1 1 0 !important;
+    flex: 1 1 auto !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
     padding: 0 !important;
     width: 100% !important;
     overflow: hidden !important;
+    margin: auto 0 !important;
   }
 
-  /* Mobile Split Stage for Synced Lyrics (Strictly fits available height, no overflow) */
+  /* Mobile Split Stage for Synced Lyrics (Compact height, never pushes controls down) */
   .theater-split-stage {
     display: flex !important;
     flex-direction: column !important;
     grid-template-columns: none !important;
-    gap: 8px !important;
+    gap: 10px !important;
     overflow: hidden !important;
-    padding: 2px !important;
+    padding: 0 !important;
     align-items: center !important;
-    height: 100% !important;
-    flex: 1 1 0 !important;
+    height: auto !important;
+    flex: 0 0 auto !important;
     min-height: 0 !important;
     width: 100% !important;
+    margin: auto 0 !important;
   }
 
   /* Compact mini-header for artwork in mobile lyrics mode so lyrics get dominant focus */
@@ -9207,10 +9312,10 @@ button {
     flex-direction: row !important;
     align-items: center !important;
     gap: 12px !important;
-    padding: 5px 10px !important;
-    background: rgba(255, 255, 255, 0.04) !important;
+    padding: 6px 12px !important;
+    background: rgba(255, 255, 255, 0.05) !important;
     border-radius: 12px !important;
-    border: 1px solid rgba(255, 255, 255, 0.06) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
     flex-shrink: 0 !important;
   }
 
@@ -9261,16 +9366,17 @@ button {
     display: none !important;
   }
 
-  /* Real-time synced lyrics full view on mobile (Comfortable readable typography, zero overflow) */
+  /* Compact synced lyrics view on mobile so playback controls sit higher up */
   .theater-split-lyrics-col {
     width: 100% !important;
-    flex: 1 1 0 !important;
+    height: 220px !important;
+    max-height: 220px !important;
+    flex: 0 0 220px !important;
     min-height: 0 !important;
-    height: 100% !important;
     padding: 8px 12px !important;
-    background: rgba(0, 0, 0, 0.3) !important;
-    border-radius: 16px !important;
-    border: 1px solid rgba(255, 255, 255, 0.06) !important;
+    background: rgba(0, 0, 0, 0.35) !important;
+    border-radius: 14px !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
     overflow: hidden !important;
     display: flex !important;
     flex-direction: column !important;
@@ -9303,21 +9409,21 @@ button {
     flex: 1 1 0 !important;
     min-height: 0 !important;
     height: 100% !important;
-    padding: 20px 8px 36px 8px !important;
+    padding: 10px 8px 24px 8px !important;
     overflow-y: auto !important;
     -webkit-overflow-scrolling: touch !important;
     mask-image: linear-gradient(
       to bottom,
       transparent 0%,
-      rgba(0, 0, 0, 1) 12%,
-      rgba(0, 0, 0, 1) 88%,
+      rgba(0, 0, 0, 1) 15%,
+      rgba(0, 0, 0, 1) 85%,
       transparent 100%
     ) !important;
     -webkit-mask-image: linear-gradient(
       to bottom,
       transparent 0%,
-      rgba(0, 0, 0, 1) 12%,
-      rgba(0, 0, 0, 1) 88%,
+      rgba(0, 0, 0, 1) 15%,
+      rgba(0, 0, 0, 1) 85%,
       transparent 100%
     ) !important;
   }
@@ -9325,47 +9431,47 @@ button {
   .theater-split-lyrics-col .lyrics-lines-wrapper {
     display: flex !important;
     flex-direction: column !important;
-    gap: 8px !important;
+    gap: 6px !important;
     padding: 2px 0 !important;
   }
 
   .theater-split-lyrics-col .lyric-line-item {
-    padding: 6px 8px !important;
-    border-radius: 8px !important;
+    padding: 4px 8px !important;
+    border-radius: 6px !important;
     transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
     text-align: left !important;
     cursor: pointer !important;
   }
 
   .theater-split-lyrics-col .lyric-text {
-    font-size: 1.05rem !important;
-    line-height: 1.45 !important;
+    font-size: 0.95rem !important;
+    line-height: 1.35 !important;
     font-weight: 600 !important;
-    color: rgba(255, 255, 255, 0.4) !important;
+    color: rgba(255, 255, 255, 0.45) !important;
     letter-spacing: -0.01em !important;
     transition: all 0.2s ease !important;
     display: block !important;
   }
 
   .theater-split-lyrics-col .lyric-line-item.is-active-line {
-    background: rgba(var(--accent-primary-rgb, 245, 158, 11), 0.12) !important;
+    background: rgba(var(--accent-primary-rgb, 245, 158, 11), 0.14) !important;
     border-left: 3px solid var(--accent-primary) !important;
-    border-radius: 8px !important;
-    padding: 6px 10px !important;
+    border-radius: 6px !important;
+    padding: 4px 10px !important;
     transform: none !important;
   }
 
   .theater-split-lyrics-col .lyric-line-item.is-active-line .lyric-text {
-    font-size: 1.18rem !important;
-    line-height: 1.45 !important;
+    font-size: 1.05rem !important;
+    line-height: 1.35 !important;
     font-weight: 800 !important;
     color: #ffffff !important;
-    text-shadow: 0 0 16px var(--accent-primary-alpha) !important;
+    text-shadow: 0 0 12px var(--accent-primary-alpha) !important;
   }
 
   .theater-split-lyrics-col .lyric-line-item.is-past-line .lyric-text {
-    font-size: 1.02rem !important;
-    color: rgba(255, 255, 255, 0.28) !important;
+    font-size: 0.92rem !important;
+    color: rgba(255, 255, 255, 0.25) !important;
   }
 
   .theater-top-bar {
@@ -9412,16 +9518,6 @@ button {
   }
 
   /* Center Stage & Video Stream in Mobile */
-  .theater-center-stage {
-    min-height: unset !important;
-    flex: 1 !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    padding: 0 !important;
-    width: 100% !important;
-  }
-
   .theater-cinematic-video-wrap.video-frame-visible {
     width: 100% !important;
     max-width: 100% !important;
@@ -9435,35 +9531,36 @@ button {
     border-radius: 12px !important;
   }
 
-  /* Bottom Controls: Flawlessly Stacked & Centered (All 5 buttons visible, no overlap) */
+  /* Bottom Controls: Elevated Position (Lifted up off the bottom edge, comfortable thumb reach) */
   .theater-bottom-controls {
     flex-shrink: 0 !important;
     width: 100% !important;
     max-width: 100% !important;
     padding: 0 4px !important;
-    margin: 0 !important;
+    margin: 0 0 16px 0 !important;
     display: flex !important;
     flex-direction: column !important;
-    gap: 8px !important;
+    gap: 10px !important;
   }
 
   .theater-scrubber-row {
     width: 100% !important;
     display: flex !important;
     align-items: center !important;
-    gap: 8px !important;
+    gap: 10px !important;
   }
 
   .theater-time-label {
     font-size: 0.72rem !important;
     width: 36px !important;
+    color: #a1a1aa !important;
   }
 
   .theater-controls-main-row {
     display: flex !important;
     flex-direction: column !important;
     grid-template-columns: none !important;
-    gap: 8px !important;
+    gap: 10px !important;
     width: 100% !important;
   }
 
@@ -9482,18 +9579,21 @@ button {
   }
 
   .t-song-title {
-    font-size: 1.05rem !important;
+    font-size: 1.15rem !important;
     font-weight: 800 !important;
+    color: #ffffff !important;
+    line-height: 1.25 !important;
   }
 
   .t-artist-title {
-    font-size: 0.8rem !important;
+    font-size: 0.82rem !important;
     color: #a1a1aa !important;
+    margin-top: 2px !important;
   }
 
   .theater-heart-btn {
-    width: 36px !important;
-    height: 36px !important;
+    width: 38px !important;
+    height: 38px !important;
     flex-shrink: 0 !important;
   }
 
@@ -9502,30 +9602,30 @@ button {
     display: flex !important;
     width: 100% !important;
     max-width: 340px !important;
-    margin: 0 auto !important;
+    margin: 4px auto !important;
     justify-content: space-between !important;
     align-items: center !important;
     gap: 8px !important;
   }
 
   .theater-ctrl-btn {
-    width: 36px !important;
-    height: 36px !important;
+    width: 38px !important;
+    height: 38px !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
   }
 
   .theater-main-play-btn {
-    width: 52px !important;
-    height: 52px !important;
+    width: 58px !important;
+    height: 58px !important;
     background: #ffffff !important;
     color: #120e0a !important;
     border-radius: 50% !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
-    box-shadow: 0 4px 16px rgba(255, 255, 255, 0.25) !important;
+    box-shadow: 0 4px 20px rgba(255, 255, 255, 0.35) !important;
   }
 
   .theater-ctrl-right {
@@ -9539,11 +9639,12 @@ button {
   .theater-volume-group {
     display: flex !important;
     align-items: center !important;
-    gap: 12px !important;
+    gap: 10px !important;
     width: 100% !important;
-    max-width: 280px !important;
-    padding: 6px 16px !important;
-    background: rgba(255, 255, 255, 0.05) !important;
+    max-width: 260px !important;
+    height: 32px !important;
+    padding: 4px 14px !important;
+    background: rgba(255, 255, 255, 0.06) !important;
     border-radius: 999px !important;
     backdrop-filter: blur(12px) !important;
     border: 1px solid rgba(255, 255, 255, 0.08) !important;

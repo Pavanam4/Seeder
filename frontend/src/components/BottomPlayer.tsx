@@ -160,30 +160,57 @@ export const BottomPlayer: React.FC<BottomPlayerProps> = ({
               </button>
             </div>
 
-            {/* Mobile-only action buttons (expand, like, play/pause) matching user screenshot */}
+            {/* Mobile-only action buttons (device, like checkmark, play/pause) matching Spotify spec */}
             <div className="mobile-mini-player-actions" onClick={(e) => e.stopPropagation()}>
               <button
                 type="button"
-                className="mobile-mini-btn"
+                className="mobile-mini-btn mobile-mini-device-btn"
                 onClick={onOpenExpanded}
-                title="Expand to Full Screen Theater"
-                aria-label="Expand theater"
+                title="Connect to a device / Theater Mode"
+                aria-label="Connect to a device"
               >
-                <Maximize2 size={18} />
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <rect x="2" y="6" width="13" height="12" rx="2" />
+                  <rect x="17" y="9" width="5" height="9" rx="1" />
+                  <path d="M7 18v2" />
+                  <path d="M11 18v2" />
+                </svg>
               </button>
 
               <button
                 type="button"
-                className={`mobile-mini-btn ${isLiked ? 'is-liked' : ''}`}
+                className={`mobile-mini-btn mobile-mini-like-btn ${isLiked ? 'is-liked' : ''}`}
                 onClick={() => onToggleLike(currentTrack)}
-                title={isLiked ? 'Remove from Liked' : 'Save to Liked'}
-                aria-label="Like track"
+                title={isLiked ? 'Saved to Your Library' : 'Save to Your Library'}
+                aria-label="Save to Your Library"
               >
-                <Heart
-                  size={18}
-                  fill={isLiked ? 'var(--accent-primary)' : 'none'}
-                  color={isLiked ? 'var(--accent-primary)' : '#ffffff'}
-                />
+                {isLiked ? (
+                  <div className="spotify-green-check-badge">
+                    <svg
+                      width="13"
+                      height="13"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="#000000"
+                      strokeWidth="3.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  </div>
+                ) : (
+                  <Heart size={20} color="#b3b3b3" />
+                )}
               </button>
 
               <button
@@ -194,11 +221,11 @@ export const BottomPlayer: React.FC<BottomPlayerProps> = ({
                 aria-label={isPlaying ? 'Pause' : 'Play'}
               >
                 {playerState === 'BUFFERING' ? (
-                  <Loader2 size={18} className="spin-animate" color="#ffffff" />
+                  <Loader2 size={22} className="spin-animate" color="#ffffff" />
                 ) : isPlaying ? (
-                  <Pause size={20} fill="#ffffff" color="#ffffff" />
+                  <Pause size={24} fill="#ffffff" color="#ffffff" />
                 ) : (
-                  <Play size={20} fill="#ffffff" color="#ffffff" style={{ marginLeft: 2 }} />
+                  <Play size={24} fill="#ffffff" color="#ffffff" style={{ marginLeft: 2 }} />
                 )}
               </button>
             </div>

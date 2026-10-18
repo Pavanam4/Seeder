@@ -41,14 +41,16 @@ const FALLBACK_ARTWORK =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 300'%3E%3Crect width='300' height='300' fill='%23161619'/%3E%3Cpath d='M150 110v80m0-40a20 20 0 1 1-40 0 20 20 0 0 1 40 0zm0 0v-20l40-10v30' fill='none' stroke='%23f59e0b' stroke-width='8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E";
 
 const LANGUAGE_FILTERS = [
-  { id: 'all', name: 'All Music', icon: '🌐' },
-  { id: 'malayalam', name: 'Malayalam', icon: '🌴' },
-  { id: 'hindi', name: 'Hindi', icon: '🇮🇳' },
-  { id: 'tamil', name: 'Tamil', icon: '🔥' },
-  { id: 'punjabi', name: 'Punjabi', icon: '⚡' },
-  { id: 'english', name: 'Global Pop', icon: '🎧' },
-  { id: 'synthwave', name: 'Synthwave', icon: '🏎️' },
-  { id: 'lofi', name: 'Lo-Fi Chill', icon: '☕' },
+  { id: 'all', name: 'All Music', mobileName: 'All', icon: '🌐' },
+  { id: 'music', name: 'Music Hits', mobileName: 'Music', icon: '🎵' },
+  { id: 'podcasts', name: 'Podcasts & Talk', mobileName: 'Podcasts', icon: '🎙️' },
+  { id: 'malayalam', name: 'Malayalam', mobileName: 'Malayalam', icon: '🌴' },
+  { id: 'tamil', name: 'Tamil', mobileName: 'Tamil', icon: '🔥' },
+  { id: 'hindi', name: 'Hindi', mobileName: 'Hindi', icon: '🇮🇳' },
+  { id: 'punjabi', name: 'Punjabi', mobileName: 'Punjabi', icon: '⚡' },
+  { id: 'english', name: 'Global Pop', mobileName: 'Global Pop', icon: '🎧' },
+  { id: 'synthwave', name: 'Synthwave', mobileName: 'Synthwave', icon: '🏎️' },
+  { id: 'lofi', name: 'Lo-Fi Chill', mobileName: 'Lo-Fi Chill', icon: '☕' },
 ];
 
 export const HomeView: React.FC<HomeViewProps> = ({
@@ -202,6 +204,19 @@ export const HomeView: React.FC<HomeViewProps> = ({
           )}
         </div>
         <div className="media-card-meta">
+          <span className="media-card-type">
+            {track.resultType === 'artist'
+              ? 'Artist'
+              : track.resultType === 'album'
+              ? 'Album'
+              : track.resultType === 'playlist'
+              ? 'Playlist'
+              : track.album
+              ? 'Album'
+              : (track.durationSeconds && track.durationSeconds < 240)
+              ? 'Single'
+              : 'Song'}
+          </span>
           <span className="media-card-title" title={title}>
             {title}
           </span>
@@ -247,6 +262,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 >
                   <span className="lang-pill-icon">{lang.icon}</span>
                   <span className="lang-pill-name">{lang.name}</span>
+                  <span className="lang-pill-mobile-name">{lang.mobileName}</span>
                 </button>
               );
             })}
@@ -332,8 +348,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
           <div className="home-section-header">
             <div>
               <h2 className="home-section-title">
-                <Compass size={18} color="var(--accent-primary)" />
-                Made For You
+                <Compass size={18} className="section-title-icon" color="var(--accent-primary)" />
+                <span className="section-heading-desktop">Made For You</span>
+                <span className="section-heading-mobile">Recommended for today</span>
               </h2>
               <p className="home-section-sub">
                 Tuned to your liked tracks, song choices, and listening history
@@ -354,8 +371,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
         <div className="home-section-header">
           <div>
             <h2 className="home-section-title">
-              <Compass size={18} color="var(--accent-primary)" />
-              {language === 'all' ? 'Trending Worldwide' : `Trending in ${selectedLangObj.name}`}
+              <Compass size={18} className="section-title-icon" color="var(--accent-primary)" />
+              <span>{language === 'all' ? 'Trending Worldwide' : `Trending in ${selectedLangObj.name}`}</span>
             </h2>
             <p className="home-section-sub">
               Top tracks curated for {selectedLangObj.name}
@@ -394,8 +411,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
           <div className="home-section-header">
             <div>
               <h2 className="home-section-title">
-                <Music size={18} color="var(--accent-primary)" />
-                Because you searched for "{searchRecQuery}"
+                <Music size={18} className="section-title-icon" color="var(--accent-primary)" />
+                <span className="section-heading-desktop">Because you searched for "{searchRecQuery}"</span>
+                <span className="section-heading-mobile">Albums featuring songs you like</span>
               </h2>
               <p className="home-section-sub">
                 Hand-picked tracks matching your recent searches
@@ -467,8 +485,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
         <div className="home-section-header">
           <div>
             <h2 className="home-section-title">
-              <Flame size={18} color="var(--accent-primary)" />
-              New Releases &amp; Fresh Drops
+              <Flame size={18} className="section-title-icon" color="var(--accent-primary)" />
+              <span>New Releases &amp; Fresh Drops</span>
             </h2>
             <p className="home-section-sub">
               Newly published music trending on YouTube Music
@@ -548,6 +566,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                   </button>
                 </div>
                 <div className="media-card-meta">
+                  <span className="media-card-type">Playlist</span>
                   <span className="media-card-title" title={pl.name}>
                     {pl.name}
                   </span>

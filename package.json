@@ -1,0 +1,9 @@
+{
+  "name": "seeder-music-player",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Seeder.play — Spotify-inspired Music Player with YouTube Music & Serverless Cloud Engine",
+  "scripts": {
+    "build": "cd frontend && npm install && npm run build"
+  }
+}

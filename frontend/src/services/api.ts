@@ -1,4 +1,4 @@
-import type { SearchResponse, ProviderInfo } from '../types';
+import type { SearchResponse, ProviderInfo, MusicTrack } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
@@ -65,21 +65,22 @@ export async function fetchProviders(): Promise<ProviderInfo[]> {
 }
 
 async function fetchFallbackSearch(query: string, limit: number, signal?: AbortSignal): Promise<SearchResponse | null> {
-  // 1. Try Piped YouTube Music endpoints (returns direct playable YouTube streams & IDs)
-  const pipedEndpoints = [
-    'https://api.piped.private.coffee',
-    'https://piped.video',
-    'https://pipedapi.tokhmi.xyz'
+  // 1. Try Invidious CORS-enabled public endpoints directly (returns direct 11-char YouTube video IDs)
+  const invidiousInstances = [
+    'https://invidious.jing.rocks',
+    'https://inv.nadeko.net',
+    'https://iv.ggtyler.dev',
+    'https://invidious.nerdvpn.de',
   ];
 
-  for (const endpoint of pipedEndpoints) {
+  for (const instance of invidiousInstances) {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4500);
+      const timeoutId = setTimeout(() => controller.abort(), 2500);
       const combinedSignal = signal || controller.signal;
 
-      const res = await fetch(`${endpoint}/search?q=${encodeURIComponent(query)}&filter=music_songs`, {
-        signal: combinedSignal
+      const res = await fetch(`${instance}/api/v1/search?q=${encodeURIComponent(query)}&type=video`, {
+        signal: combinedSignal,
       });
       clearTimeout(timeoutId);
 
@@ -87,26 +88,26 @@ async function fetchFallbackSearch(query: string, limit: number, signal?: AbortS
       if (!res.ok || contentType.includes('text/html')) continue;
 
       const data = await res.json();
-      if (data && Array.isArray(data.items) && data.items.length > 0) {
-        const items: MusicTrack[] = data.items
-          .filter((v: any) => v.url && v.url.includes('watch?v='))
+      if (Array.isArray(data) && data.length > 0) {
+        const items: MusicTrack[] = data
+          .filter((v: any) => v.videoId && v.videoId.length === 11)
           .slice(0, limit)
           .map((v: any) => {
-            const videoId = v.url.replace('/watch?v=', '').split('&')[0];
-            const secs = typeof v.duration === 'number' ? v.duration : 180;
+            const secs = v.lengthSeconds || 180;
             const mins = Math.floor(secs / 60);
             const remSecs = secs % 60;
             return {
-              id: videoId,
-              title: v.title || 'Untitled',
-              artist: v.uploaderName || 'Unknown Artist',
+              id: v.videoId,
+              title: v.title || 'Untitled Track',
+              artist: v.author || 'Unknown Artist',
               album: 'Single',
               duration: `${mins}:${remSecs < 10 ? '0' : ''}${remSecs}`,
               durationSeconds: secs,
-              thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-              youtubeUrl: `https://www.youtube.com/watch?v=${videoId}`,
+              thumbnailUrl:
+                v.videoThumbnails?.[0]?.url || `https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg`,
+              youtubeUrl: `https://www.youtube.com/watch?v=${v.videoId}`,
               isEmbeddableCandidate: true,
-              source: 'piped-cloud'
+              source: 'invidious-direct',
             };
           });
 
@@ -117,68 +118,28 @@ async function fetchFallbackSearch(query: string, limit: number, signal?: AbortS
             limit,
             totalReturned: items.length,
             hasMore: false,
-            provider: 'piped-cloud',
+            provider: 'invidious-direct',
             durationMs: 250,
-            items
+            items,
           };
         }
-      }
-    } catch {
-      // try next endpoint
-    }
-  }
-
-  // 2. Try Invidious endpoints as secondary YouTube backup
-  const invidiousInstances = [
-    'https://inv.nadeko.net',
-    'https://invidious.asir.dev',
-    'https://iv.ggtyler.dev'
-  ];
-
-  for (const instance of invidiousInstances) {
-    try {
-      const res = await fetch(`${instance}/api/v1/search?q=${encodeURIComponent(query)}&type=video`, { signal });
-      const contentType = res.headers.get('content-type') || '';
-      if (!res.ok || contentType.includes('text/html')) continue;
-
-      const data = await res.json();
-      if (Array.isArray(data) && data.length > 0) {
-        const items: MusicTrack[] = data.slice(0, limit).map((v: any) => {
-          const secs = v.lengthSeconds || 180;
-          const mins = Math.floor(secs / 60);
-          const remSecs = secs % 60;
-          return {
-            id: v.videoId,
-            title: v.title || 'Untitled',
-            artist: v.author || 'Unknown Artist',
-            album: 'Single',
-            duration: `${mins}:${remSecs < 10 ? '0' : ''}${remSecs}`,
-            durationSeconds: secs,
-            thumbnailUrl: v.videoThumbnails?.[0]?.url || `https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg`,
-            youtubeUrl: `https://www.youtube.com/watch?v=${v.videoId}`,
-            isEmbeddableCandidate: true,
-            source: 'invidious-direct'
-          };
-        });
-        return {
-          query,
-          page: 1,
-          limit,
-          totalReturned: items.length,
-          hasMore: false,
-          provider: 'invidious-direct',
-          durationMs: 300,
-          items
-        };
       }
     } catch {
       // try next instance
     }
   }
 
-  // 3. Ultra-reliable global iTunes catalog fallback
+  // 2. High-speed global iTunes catalog fallback
   try {
-    const itunesUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=${limit}`;
+    let itunesQuery = query;
+    const lower = query.toLowerCase();
+    if (lower === 'new releases' || lower === 'latest releases' || lower === 'recent releases') {
+      itunesQuery = 'Top Popular Music Hits';
+    } else if (lower.includes('trending')) {
+      itunesQuery = 'Top Global Pop Hits';
+    }
+
+    const itunesUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(itunesQuery)}&entity=song&limit=${limit}`;
     const res = await fetch(itunesUrl, { signal });
     if (res.ok) {
       const data = await res.json();
@@ -197,8 +158,8 @@ async function fetchFallbackSearch(query: string, limit: number, signal?: AbortS
             durationSeconds: totalSecs,
             thumbnailUrl: art || `https://i.ytimg.com/vi/${r.trackId}/hqdefault.jpg`,
             youtubeUrl: `https://www.youtube.com/results?search_query=${encodeURIComponent(`${r.trackName} ${r.artistName}`)}`,
-            isEmbeddableCandidate: true,
-            source: 'itunes-cloud'
+            isEmbeddableCandidate: false, // forces PlayerTestPanel to dynamically resolve 11-char YouTube ID
+            source: 'itunes-cloud',
           };
         });
 
@@ -210,7 +171,7 @@ async function fetchFallbackSearch(query: string, limit: number, signal?: AbortS
           hasMore: false,
           provider: 'itunes-catalog',
           durationMs: 180,
-          items
+          items,
         };
       }
     }
