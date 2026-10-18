@@ -1,0 +1,33 @@
+name: seeder_player
+description: "Seeder.play — Native Spotify-inspired Android Music Player with Background Playback"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Native Background Audio & Android Foreground Service
+  just_audio: ^0.9.36
+  audio_service: ^0.18.12
+  audio_session: ^0.1.18
+
+  # Standalone YouTube Music Stream Extraction
+  youtube_explode_dart: ^2.2.0
+
+  # UI, Icons, Typography & Cached Images
+  google_fonts: ^6.1.0
+  cached_network_image: ^3.3.1
+  shared_preferences: ^2.2.2
+  cupertino_icons: ^1.0.6
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
