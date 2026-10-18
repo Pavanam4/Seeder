@@ -5,7 +5,6 @@ import 'package:audio_service/audio_service.dart';
 import '../theme/app_theme.dart';
 import '../services/audio_player_handler.dart';
 import '../services/storage_service.dart';
-import '../models/track.dart';
 
 class NowPlayingTheater extends StatefulWidget {
   final AudioPlayerHandler audioHandler;
