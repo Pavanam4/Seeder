@@ -31,6 +31,11 @@ class StorageService {
     await prefs.setString(_likedTracksKey, jsonEncode(jsonList));
   }
 
+  Future<bool> isLiked(String trackId) async {
+    final list = await getLikedTracks();
+    return list.any((t) => t.id == trackId);
+  }
+
   Future<bool> toggleLike(MusicTrack track) async {
     final list = await getLikedTracks();
     final exists = list.any((t) => t.id == track.id);

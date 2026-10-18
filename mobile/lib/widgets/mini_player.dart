@@ -33,6 +33,7 @@ class MiniPlayer extends StatelessWidget {
                 showModalBottomSheet(
                   context: context,
                   isScrollControlled: true,
+                  useSafeArea: true,
                   backgroundColor: Colors.transparent,
                   builder: (_) => NowPlayingTheater(audioHandler: audioHandler),
                 );

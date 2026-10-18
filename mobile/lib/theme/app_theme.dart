@@ -2,21 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
-  // Brand color palette matching the Spotify-inspired web dark mode
-  static const Color background = Color(0xFF0F0F12);
-  static const Color surface = Color(0xFF18181C);
-  static const Color surfaceLight = Color(0xFF222228);
-  static const Color border = Color(0x1FFFFFFF);
+  // Brand color palette matching the Spotify Cyber Violet web theme
+  static const Color background = Color(0xFF0C0B10);
+  static const Color surface = Color(0xFF15131C);
+  static const Color surfaceLight = Color(0xFF201C2B);
+  static const Color border = Color(0x1AFFFFFF);
 
-  static const Color accent = Color(0xFFF59E0B); // Amber 500
-  static const Color accentLight = Color(0xFFFBBF24); // Amber 400
-  static const Color accentAlpha = Color(0x33F59E0B);
+  static const Color accent = Color(0xFF8B5CF6); // Cyber Violet / Electric Purple
+  static const Color accentLight = Color(0xFFA78BFA); // Violet 400
+  static const Color accentDark = Color(0xFF7C3AED); // Violet 600
+  static const Color accentAlpha = Color(0x338B5CF6);
 
   static const Color textPrimary = Color(0xFFFFFFFF);
   static const Color textSecondary = Color(0xFFA1A1AA);
   static const Color textMuted = Color(0xFF71717A);
 
-  static const Color playerBackground = Color(0xEE121216);
+  static const Color playerBackground = Color(0xF2120F1A);
 
   static ThemeData get darkTheme {
     return ThemeData(

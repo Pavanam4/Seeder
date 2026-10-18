@@ -87,7 +87,7 @@ class _MainShellState extends State<MainShell> {
           Positioned(
             left: 0,
             right: 0,
-            bottom: 64, // Sits directly on top of bottom nav bar
+            bottom: 64 + MediaQuery.of(context).padding.bottom,
             child: MiniPlayer(audioHandler: widget.audioHandler),
           ),
         ],
@@ -95,23 +95,21 @@ class _MainShellState extends State<MainShell> {
 
       // 4-Tab Bottom Navigation Bar matching Mobile Web UI
       bottomNavigationBar: Container(
-        height: 64,
+        padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
         decoration: BoxDecoration(
-          color: AppTheme.background.withOpacity(0.96),
+          color: AppTheme.background.withValues(alpha: 0.96),
           border: const Border(top: BorderSide(color: AppTheme.border, width: 1)),
         ),
-        child: ClipRect(
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildNavItem(0, Icons.home_filled, 'Home'),
-                _buildNavItem(1, Icons.search_rounded, 'Search'),
-                _buildNavItem(2, Icons.my_library_music_rounded, 'Your Library'),
-                _buildCreateNavItem('Create'),
-              ],
-            ),
+        child: SizedBox(
+          height: 64,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildNavItem(0, Icons.home_filled, 'Home'),
+              _buildNavItem(1, Icons.search_rounded, 'Search'),
+              _buildNavItem(2, Icons.my_library_music_rounded, 'Your Library'),
+              _buildCreateNavItem('Create'),
+            ],
           ),
         ),
       ),

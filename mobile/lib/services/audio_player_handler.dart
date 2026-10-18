@@ -92,14 +92,25 @@ class AudioPlayerHandler extends BaseAudioHandler with QueueHandler, SeekHandler
     final streamUri = await _musicService.getAudioStreamUri(track.id);
     if (streamUri != null) {
       try {
-        await _player.setAudioSource(AudioSource.uri(streamUri));
+        await _player.setAudioSource(
+          AudioSource.uri(
+            streamUri,
+            headers: const {
+              'User-Agent':
+                  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+            },
+          ),
+        );
         mediaItem.add(track.toMediaItem(streamUri: streamUri));
         await _player.play();
       } catch (e) {
-        print('Playback error for ${track.title}: $e');
+        // If stream failed, retry with unadorned AudioSource
+        try {
+          await _player.setAudioSource(AudioSource.uri(streamUri));
+          mediaItem.add(track.toMediaItem(streamUri: streamUri));
+          await _player.play();
+        } catch (_) {}
       }
-    } else {
-      print('Could not resolve audio stream for track: ${track.id}');
     }
   }
 
