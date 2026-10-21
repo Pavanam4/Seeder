@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import type { MusicTrack } from '../types';
 import {
   Play,
@@ -8,7 +8,10 @@ import {
   Music,
   Compass,
   ArrowRight,
+  History,
+  TrendingUp,
 } from 'lucide-react';
+import { getUserTasteProfile } from '../services/storage';
 
 interface TrackListProps {
   tracks: MusicTrack[];
@@ -16,7 +19,7 @@ interface TrackListProps {
   isLoadingMore: boolean;
   error: string | null;
   onRetry: () => void;
-  onSelectTrack: (track: MusicTrack) => void;
+  onSelectTrack: (track: MusicTrack, queue?: MusicTrack[]) => void;
   activeTrackId?: string;
   hasMore: boolean;
   onLoadMore: () => void;
@@ -25,118 +28,134 @@ interface TrackListProps {
   likedTrackIds?: Set<string>;
   onToggleLike?: (track: MusicTrack) => void;
   onOpenAddToPlaylist?: (track: MusicTrack) => void;
+  recentTracks?: MusicTrack[];
+  likedTracks?: MusicTrack[];
+  algorithmicTracks?: MusicTrack[];
+  searchHistory?: string[];
+  onClearHistory?: () => void;
 }
 
-interface CategoryCard {
+interface SpotifyGenreTile {
   id: string;
   name: string;
-  subtitle: string;
   query: string;
-  tag: string;
-  imageUrl: string;
-  accent: string;
+  color: string;
+  tag?: string;
+  artUrl: string;
 }
 
-const QUICK_EXPLORE_CHIPS = [
-  { label: '🔥 Top Billboard Hits', query: 'Top Billboard Hits' },
-  { label: '☕ Chillhop & Coffee', query: 'Lofi Coffee Beats' },
-  { label: '🌴 Malayalam Hits', query: 'Latest Malayalam Songs' },
-  { label: '⚡ Synthwave Outrun', query: 'Synthwave 80s Retro' },
-  { label: '🎧 Tamil Hits', query: 'Latest Tamil Hit Songs' },
-  { label: '💪 Workout EDM', query: 'High Energy Gym EDM' },
-  { label: '🌙 Late Night Drive', query: 'Late Night Midnight Drive' },
-];
-
-const BROWSE_CATEGORIES: CategoryCard[] = [
+const SPOTIFY_GENRE_TILES: SpotifyGenreTile[] = [
   {
-    id: 'lofi',
-    name: 'Lo-Fi Chill & Beats',
-    subtitle: 'Relaxing lo-fi beats, ambient coffee rhythms & study flow',
-    query: 'Lofi Chill Beats',
-    tag: 'Chill',
-    imageUrl: 'https://images.unsplash.com/photo-1518609878373-06d740f60d8b?auto=format&fit=crop&w=600&q=80',
-    accent: '#10b981',
+    id: 'malayalam',
+    name: 'Malayalam',
+    query: 'Malayalam Hit Songs',
+    color: '#27856a',
+    tag: 'Top Pick',
+    artUrl: 'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?w=240&auto=format&fit=crop&q=80',
   },
   {
-    id: 'synthwave',
-    name: 'Synthwave & Retrosynth',
-    subtitle: 'Outrun neon, 80s nostalgic synths & cyber night drives',
-    query: 'Synthwave Outrun',
-    tag: 'Synth',
-    imageUrl: 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?auto=format&fit=crop&w=600&q=80',
-    accent: '#8b5cf6',
+    id: 'trending',
+    name: 'Charts & Viral',
+    query: 'Top Trending Songs Charts',
+    color: '#8400e7',
+    tag: 'Top 50',
+    artUrl: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=240&auto=format&fit=crop&q=80',
   },
   {
-    id: 'electronic',
-    name: 'Electronic & Dance',
-    subtitle: 'High-octane club bangers, bass drops & festival mainstages',
-    query: 'Electronic Dance Music',
-    tag: 'Dance',
-    imageUrl: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=600&q=80',
-    accent: '#3b82f6',
+    id: 'tamil',
+    name: 'Tamil Hits',
+    query: 'Tamil Hit Songs Anirudh',
+    color: '#e8115b',
+    tag: 'Popular',
+    artUrl: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=240&auto=format&fit=crop&q=80',
   },
   {
-    id: 'ambient',
-    name: 'Deep Focus & Ambient',
-    subtitle: 'Calming soundscapes, theta brainwaves & distraction-free audio',
-    query: 'Ambient Deep Focus',
-    tag: 'Focus',
-    imageUrl: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=600&q=80',
-    accent: '#64748b',
+    id: 'bollywood',
+    name: 'Bollywood & Hindi',
+    query: 'Trending Hindi Bollywood Songs',
+    color: '#ba5d07',
+    tag: 'Trending',
+    artUrl: 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=240&auto=format&fit=crop&q=80',
   },
   {
     id: 'pop',
-    name: 'Pop Hits & Charts',
-    subtitle: 'Global chart leaders, trending virals & radio favorites',
-    query: 'Top Pop Hits',
-    tag: 'Top Hits',
-    imageUrl: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=600&q=80',
-    accent: '#ec4899',
+    name: 'Global Pop',
+    query: 'Top Pop Music Hits',
+    color: '#148a08',
+    tag: 'Hits',
+    artUrl: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=240&auto=format&fit=crop&q=80',
   },
   {
     id: 'hiphop',
-    name: 'Hip-Hop & Urban',
-    subtitle: 'Heavy 808s, lyrical rap, modern trap & underground cuts',
-    query: 'Hip Hop Beats',
+    name: 'Hip-Hop & Rap',
+    query: 'Hip Hop Rap Beats',
+    color: '#e13300',
     tag: 'Urban',
-    imageUrl: 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=600&q=80',
-    accent: '#f59e0b',
+    artUrl: 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=240&auto=format&fit=crop&q=80',
+  },
+  {
+    id: 'lofi',
+    name: 'Lo-Fi & Chill',
+    query: 'Lofi Chill Study Beats',
+    color: '#477d95',
+    tag: 'Chill',
+    artUrl: 'https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=240&auto=format&fit=crop&q=80',
+  },
+  {
+    id: 'dance',
+    name: 'Dance / EDM',
+    query: 'Electronic Dance Music Festival',
+    color: '#006450',
+    tag: 'Energy',
+    artUrl: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=240&auto=format&fit=crop&q=80',
   },
   {
     id: 'rock',
-    name: 'Rock & Alternative',
-    subtitle: 'Overdriven guitars, anthemic drums & raw alternative tracks',
-    query: 'Alternative Rock',
-    tag: 'Rock',
-    imageUrl: 'https://images.unsplash.com/photo-1498038432885-c6f3f1b912ee?auto=format&fit=crop&w=600&q=80',
-    accent: '#ef4444',
+    name: 'Rock & Alt',
+    query: 'Alternative Rock Hits',
+    color: '#e91429',
+    tag: 'Anthem',
+    artUrl: 'https://images.unsplash.com/photo-1498038432885-c6f3f1b912ee?w=240&auto=format&fit=crop&q=80',
   },
   {
-    id: 'acoustic',
-    name: 'Acoustic & Indie',
-    subtitle: 'Intimate fingerstyle melodies, warm vocals & storytelling',
-    query: 'Indie Acoustic',
+    id: 'indie',
+    name: 'Indie & Acoustic',
+    query: 'Indie Acoustic Folk Songs',
+    color: '#608108',
     tag: 'Acoustic',
-    imageUrl: 'https://images.unsplash.com/photo-1445985543469-433ecdd62977?auto=format&fit=crop&w=600&q=80',
-    accent: '#14b8a6',
+    artUrl: 'https://images.unsplash.com/photo-1445985543469-433ecdd62977?w=240&auto=format&fit=crop&q=80',
   },
   {
-    id: 'malayalam',
-    name: 'Malayalam Melodies',
-    subtitle: 'Sushin Shyam, Deepak Dev & soul-stirring Kerala playback hits',
-    query: 'Malayalam Hit Songs',
-    tag: 'Regional',
-    imageUrl: 'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?auto=format&fit=crop&w=600&q=80',
-    accent: '#06b6d4',
+    id: 'focus',
+    name: 'Deep Focus',
+    query: 'Deep Focus Ambient Study Audio',
+    color: '#503750',
+    tag: 'Focus',
+    artUrl: 'https://images.unsplash.com/photo-1507838153414-b4b713384a76?w=240&auto=format&fit=crop&q=80',
   },
   {
     id: 'nightdrive',
-    name: 'Late Night Midnight Drive',
-    subtitle: 'Nocturnal highways, dark synth pulses & midnight headlights',
-    query: 'Late Night Midnight Drive',
-    tag: 'Night',
-    imageUrl: 'https://images.unsplash.com/photo-1519501025264-65ba15a82390?auto=format&fit=crop&w=600&q=80',
-    accent: '#d97706',
+    name: 'Late Night Drive',
+    query: 'Late Night Midnight Drive Synth',
+    color: '#1e3264',
+    tag: 'Midnight',
+    artUrl: 'https://images.unsplash.com/photo-1519501025264-65ba15a82390?w=240&auto=format&fit=crop&q=80',
+  },
+  {
+    id: 'workout',
+    name: 'Workout',
+    query: 'High Energy Gym Workout Music',
+    color: '#777777',
+    tag: 'Gym',
+    artUrl: 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=240&auto=format&fit=crop&q=80',
+  },
+  {
+    id: 'punjabi',
+    name: 'Punjabi Hot',
+    query: 'Punjabi Hits Top Songs',
+    color: '#bc5900',
+    tag: 'Beats',
+    artUrl: 'https://images.unsplash.com/photo-1524368535928-5b5e00ddc76b?w=240&auto=format&fit=crop&q=80',
   },
 ];
 
@@ -155,7 +174,61 @@ export const TrackList: React.FC<TrackListProps> = ({
   likedTrackIds = new Set(),
   onToggleLike,
   onOpenAddToPlaylist,
+  recentTracks = [],
+  likedTracks = [],
+  algorithmicTracks = [],
+  searchHistory = [],
+  onClearHistory,
 }) => {
+  // Dynamic taste profile derived from user's listening history and liked tracks
+  const tasteProfile = useMemo(() => {
+    return getUserTasteProfile(likedTracks, recentTracks);
+  }, [likedTracks, recentTracks]);
+
+  // Algorithmic taste chips (user's real frequent artists & genres)
+  const algoTasteChips = useMemo(() => {
+    const chips: string[] = [];
+    if (tasteProfile.length > 0) {
+      for (const item of tasteProfile.slice(0, 4)) {
+        chips.push(item);
+      }
+    }
+    const fallbackMoods = [
+      'Top Billboard Hits',
+      'Chillhop Beats',
+      'Malayalam Melodies',
+      'Late Night Drive',
+      'Tamil Hits',
+      'Workout EDM',
+    ];
+    for (const m of fallbackMoods) {
+      if (!chips.includes(m) && chips.length < 6) {
+        chips.push(m);
+      }
+    }
+    return chips;
+  }, [tasteProfile]);
+
+  // Algorithmic quick picks (playable recommendation tracks)
+  const quickPickTracks = useMemo(() => {
+    const combined: MusicTrack[] = [];
+    const seen = new Set<string>();
+
+    for (const t of algorithmicTracks) {
+      if (!seen.has(t.id)) {
+        seen.add(t.id);
+        combined.push(t);
+      }
+    }
+    for (const t of recentTracks) {
+      if (!seen.has(t.id) && combined.length < 6) {
+        seen.add(t.id);
+        combined.push(t);
+      }
+    }
+    return combined.slice(0, 6);
+  }, [algorithmicTracks, recentTracks]);
+
   // Loading State
   if (isLoading && tracks.length === 0) {
     return (
@@ -187,92 +260,165 @@ export const TrackList: React.FC<TrackListProps> = ({
     );
   }
 
-  // Empty State before search or when query is empty: Rich Browse Categories Hub
+  // Empty State before search: High-End Algorithm & Spotify-Style Browse Hub
   if (tracks.length === 0 && !query.trim()) {
+    const hasListeningData = quickPickTracks.length > 0 || algoTasteChips.length > 0;
+
     return (
       <div className="search-explore-genres-section">
-        {/* Section Header */}
-        <div className="explore-genres-header">
-          <div className="explore-header-left">
-            <div className="explore-header-icon-box">
-              <Compass size={22} className="explore-header-icon" />
+        {/* 1. Algorithmic Hub Section: Based On Your Listening */}
+        {hasListeningData && (
+          <div className="search-algo-hub-section">
+            <div className="search-algo-header">
+              <div className="search-algo-title-wrap">
+                <Music size={18} className="search-algo-title-icon" />
+                <div>
+                  <h2 className="search-algo-title">Based on your listening</h2>
+                  <p className="search-algo-sub">
+                    Personalized genres & quick picks based on your recent activity
+                  </p>
+                </div>
+              </div>
             </div>
-            <div>
-              <h2 className="explore-genres-title">Browse Categories</h2>
-              <p className="explore-genres-sub">
-                Explore handpicked soundscapes, trending genres, and atmospheric radio stations
-              </p>
+
+            {/* Dynamic Algorithmic Taste Chips */}
+            {algoTasteChips.length > 0 && (
+              <div className="search-algo-chips-row">
+                {algoTasteChips.map((chip) => (
+                  <button
+                    key={chip}
+                    type="button"
+                    className="search-algo-chip"
+                    onClick={() => onSelectSuggestion(chip)}
+                    title={`Explore ${chip}`}
+                  >
+                    <span>{chip}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Algorithmic Quick Picks Grid: 6 Live Playable Tracks */}
+            {quickPickTracks.length > 0 && (
+              <div className="search-quick-picks-grid">
+                {quickPickTracks.map((track) => (
+                  <div
+                    key={track.id}
+                    className="search-quick-pick-card"
+                    onClick={() => onSelectTrack(track, quickPickTracks)}
+                    role="button"
+                    tabIndex={0}
+                    title={`Play ${track.title}`}
+                  >
+                    <div className="quick-pick-thumb-wrap">
+                      <img
+                        src={track.thumbnailUrl || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=160&auto=format&fit=crop&q=60'}
+                        alt={track.title}
+                        className="quick-pick-img"
+                        loading="lazy"
+                      />
+                      <div className="quick-pick-play-overlay">
+                        <Play size={16} fill="currentColor" style={{ marginLeft: 2 }} />
+                      </div>
+                    </div>
+                    <div className="quick-pick-details">
+                      <span className="quick-pick-title">{track.title}</span>
+                      <span className="quick-pick-artist">{track.artist || 'Unknown Artist'}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 2. Recent Searches (if any) */}
+        {searchHistory && searchHistory.length > 0 && (
+          <div className="search-history-hub-section">
+            <div className="search-section-mini-header">
+              <div className="search-mini-header-left">
+                <History size={16} className="text-muted" />
+                <span className="search-section-mini-title">Recent Searches</span>
+              </div>
+              {onClearHistory && (
+                <button
+                  type="button"
+                  className="search-clear-history-btn"
+                  onClick={onClearHistory}
+                >
+                  Clear history
+                </button>
+              )}
+            </div>
+            <div className="search-history-chips-row">
+              {searchHistory.slice(0, 8).map((term) => (
+                <button
+                  key={term}
+                  type="button"
+                  className="search-history-chip"
+                  onClick={() => onSelectSuggestion(term)}
+                  title={`Search for "${term}"`}
+                >
+                  <History size={12} className="history-chip-icon" />
+                  <span>{term}</span>
+                </button>
+              ))}
             </div>
           </div>
-        </div>
+        )}
 
-        {/* Quick Mood Launcher Chips Strip */}
-        <div className="explore-mood-chips-strip" role="navigation" aria-label="Quick mood shortcuts">
-          {QUICK_EXPLORE_CHIPS.map((chip) => (
-            <button
-              key={chip.label}
-              type="button"
-              className="explore-mood-chip-btn"
-              onClick={() => onSelectSuggestion(chip.query)}
-              title={`Explore ${chip.query}`}
-            >
-              <span>{chip.label}</span>
-            </button>
-          ))}
-        </div>
+        {/* 3. Browse All Categories (Spotify Vibrant Colored Solid Tiles) */}
+        <div className="search-browse-section">
+          <div className="search-section-mini-header">
+            <span className="search-section-mini-title">Browse All</span>
+          </div>
 
-        {/* Rich Categories Grid */}
-        <div className="explore-genres-grid">
-          {BROWSE_CATEGORIES.map((cat) => (
-            <div
-              key={cat.id}
-              className="genre-tile-card"
-              onClick={() => onSelectSuggestion(cat.query)}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  onSelectSuggestion(cat.query);
-                }
-              }}
-              title={`Explore ${cat.name}`}
-            >
-              {/* Photo Artwork Background */}
+          <div className="spotify-browse-grid">
+            {SPOTIFY_GENRE_TILES.map((cat) => (
               <div
-                className="genre-tile-artwork-bg"
-                style={{ backgroundImage: `url(${cat.imageUrl})` }}
-              />
-
-              {/* Atmospheric Dark Gradient Overlay */}
-              <div className="genre-tile-gradient-overlay" />
-
-              {/* Accent Tag */}
-              <span className="genre-tile-tag-badge" style={{ borderColor: `${cat.accent}55` }}>
-                {cat.tag}
-              </span>
-
-              {/* Title & Description */}
-              <div className="genre-tile-content">
-                <h3 className="genre-tile-name">{cat.name}</h3>
-                <p className="genre-tile-sub">{cat.subtitle}</p>
-              </div>
-
-              {/* Hover Floating Play Button */}
-              <button
-                type="button"
-                className="genre-tile-hover-play-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSelectSuggestion(cat.query);
+                key={cat.id}
+                className="spotify-genre-card"
+                style={{ backgroundColor: cat.color }}
+                onClick={() => onSelectSuggestion(cat.query)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onSelectSuggestion(cat.query);
+                  }
                 }}
-                title={`Play ${cat.name}`}
-                aria-label={`Play ${cat.name}`}
+                title={`Explore ${cat.name}`}
               >
-                <Play size={18} fill="#120e0a" color="#120e0a" style={{ marginLeft: 2 }} />
-              </button>
-            </div>
-          ))}
+                <div className="spotify-genre-title-wrap">
+                  <h3 className="spotify-genre-title">{cat.name}</h3>
+                  {cat.tag && <span className="spotify-genre-tag">{cat.tag}</span>}
+                </div>
+
+                <div className="spotify-genre-art-container">
+                  <img
+                    src={cat.artUrl}
+                    alt={cat.name}
+                    className="spotify-genre-artwork"
+                    loading="lazy"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  className="spotify-genre-play-bubble"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSelectSuggestion(cat.query);
+                  }}
+                  title={`Play ${cat.name}`}
+                  aria-label={`Play ${cat.name}`}
+                >
+                  <Play size={18} fill="#000000" color="#000000" style={{ marginLeft: 2 }} />
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     );

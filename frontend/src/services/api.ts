@@ -230,3 +230,108 @@ export async function searchTracks(
     throw new ApiError('Unable to connect to search service. Please try again.', 0, provider, elapsed);
   }
 }
+
+export interface SpotifyResolvedTrack {
+  title: string;
+  artist: string;
+  duration?: number;
+}
+
+export interface SpotifyResolvedData {
+  success: boolean;
+  type: string;
+  title: string;
+  trackCount: number;
+  tracks: SpotifyResolvedTrack[];
+}
+
+/**
+ * Resolves a Spotify playlist, album, or track URL into clean titles & artists for free without API keys.
+ * Tries local backend endpoint first, falls back to direct embed via public proxy if on cloud.
+ */
+export async function resolveSpotifyUrl(url: string, signal?: AbortSignal): Promise<SpotifyResolvedData> {
+  const trimmedUrl = url.trim();
+
+  // 1. Try local/backend resolver
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/spotify/resolve?url=${encodeURIComponent(trimmedUrl)}`, { signal });
+    const contentType = res.headers.get('content-type') || '';
+    if (res.ok && contentType.includes('application/json')) {
+      const data = await res.json();
+      if (data.success && Array.isArray(data.tracks)) {
+        return {
+          ...data,
+          tracks: data.tracks.map((t: any) => ({
+            ...t,
+            artist: (t.artist || '').replace(/\u00a0/g, ' ')
+          }))
+        };
+      }
+    }
+  } catch (backendErr) {
+    console.warn('Backend spotify resolve failed or unavailable, attempting embed parse:', backendErr);
+  }
+
+  // 2. Client-side fallback: parse URL into embed URL
+  const match = trimmedUrl.match(
+    /(?:spotify\.com\/(?:intl-[a-z]+\/)?(playlist|album|track)\/|spotify:(playlist|album|track):)([a-zA-Z0-9]+)/i
+  );
+  if (!match) {
+    throw new Error('Please enter a valid Spotify playlist, album, or track link (e.g. https://open.spotify.com/playlist/...)');
+  }
+
+  const type = (match[1] || match[2]).toLowerCase();
+  const id = match[3];
+  const embedUrl = `https://open.spotify.com/embed/${type}/${id}`;
+
+  try {
+    // Attempt through public CORS proxy
+    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(embedUrl)}`;
+    const proxyRes = await fetch(proxyUrl, { signal });
+    if (!proxyRes.ok) {
+      throw new Error(`Spotify embed proxy returned status ${proxyRes.status}`);
+    }
+    const html = await proxyRes.text();
+    const scriptMatch = html.match(/<script id="__NEXT_DATA__"[^>]*>(.*?)<\/script>/s);
+    if (!scriptMatch) {
+      throw new Error('Unable to extract tracklist from this Spotify page.');
+    }
+
+    const json = JSON.parse(scriptMatch[1]);
+    const entity = json.props?.pageProps?.state?.data?.entity;
+    if (!entity) {
+      throw new Error('No playlist or track data found in Spotify response.');
+    }
+
+    const title = entity.name || entity.title || 'Spotify Import';
+    const tracks: SpotifyResolvedTrack[] = [];
+
+    if (Array.isArray(entity.trackList)) {
+      for (const item of entity.trackList) {
+        if (item.title) {
+          tracks.push({
+            title: item.title.trim(),
+            artist: (item.subtitle || '').replace(/\u00a0/g, ' ').trim(),
+            duration: typeof item.duration === 'number' ? Math.round(item.duration / 1000) : 0,
+          });
+        }
+      }
+    } else if (type === 'track') {
+      tracks.push({
+        title: (entity.title || entity.name || '').trim(),
+        artist: (entity.subtitle || '').replace(/\u00a0/g, ' ').trim(),
+        duration: typeof entity.duration === 'number' ? Math.round(entity.duration / 1000) : 0,
+      });
+    }
+
+    return {
+      success: true,
+      type,
+      title,
+      trackCount: tracks.length,
+      tracks,
+    };
+  } catch (err: any) {
+    throw new Error(err.message || 'Failed to fetch tracks from this Spotify URL.');
+  }
+}

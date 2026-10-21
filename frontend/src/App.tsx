@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { Flame, X } from 'lucide-react';
 import { Sidebar } from './components/Sidebar';
 import { TopNav } from './components/TopNav';
 import { HomeView } from './components/HomeView';
@@ -8,6 +9,7 @@ import { BottomPlayer } from './components/BottomPlayer';
 import { QueueDrawer } from './components/QueueDrawer';
 import { AddToPlaylistModal } from './components/AddToPlaylistModal';
 import { CreatePlaylistModal } from './components/CreatePlaylistModal';
+import { SpotifyImportModal } from './components/SpotifyImportModal';
 import { Toast, type ToastMessage } from './components/Toast';
 import { SearchBar } from './components/SearchBar';
 import { TrackList } from './components/TrackList';
@@ -15,6 +17,7 @@ import { PlayerTestPanel, type PlayerHandle } from './components/PlayerTestPanel
 import { MiniPlayerPopup } from './components/MiniPlayerPopup';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { SettingsView } from './components/SettingsView';
+import { AuthModal } from './components/AuthModal';
 import type {
   MusicTrack,
   YTPlayerStateName,
@@ -26,6 +29,8 @@ import type {
   ViewType,
   AudioQuality,
   AudioNormalizationMode,
+  UserProfile,
+  PlaybackSession,
 } from './types';
 import {
   checkBackendHealth,
@@ -37,6 +42,10 @@ import {
   savePlaylists,
   loadLikedTracks,
   saveLikedTracks,
+  loadRecentTracks,
+  saveRecentTracks,
+  loadPinnedPlaylists,
+  savePinnedPlaylists,
   loadTheme,
   saveTheme,
   loadVolume,
@@ -52,7 +61,28 @@ import {
   clearSearchHistory,
   addRecentArtist,
   getUserTasteProfile,
+  loadCurrentUser,
+  saveCurrentUser,
+  logoutUser,
+  loadPlaybackSession,
+  savePlaybackSession,
+  clearPlaybackSession,
+  syncUserDataFromCloud,
+  syncUserDataToCloud,
+  listenToCrossTabSync,
 } from './services/storage';
+import {
+  isFirebaseConfigured,
+  getDeviceId,
+  onAuthStateSubscription,
+  subscribeToUserCloudData,
+  syncPlaybackSessionToFirestore,
+} from './services/firebase';
+import {
+  generateAlgorithmicMixes,
+  getCachedAutoMixes,
+  filterMusicTracks,
+} from './services/autoMixes';
 
 export function App() {
   // Navigation & View State
@@ -75,10 +105,22 @@ export function App() {
   const [searchRecQuery, setSearchRecQuery] = useState<string | null>(null);
   const [themeTracks, setThemeTracks] = useState<MusicTrack[]>([]);
 
-  // Collections State
-  const [playlists, setPlaylists] = useState<Playlist[]>(() => loadPlaylists());
-  const [likedTracks, setLikedTracks] = useState<MusicTrack[]>(() => loadLikedTracks());
-  const [recentTracks, setRecentTracks] = useState<MusicTrack[]>([]);
+  // Real Algorithmic Auto Mixes (Never fake cards, always algorithm)
+  const [autoMixes, setAutoMixes] = useState<Playlist[]>(() => getCachedAutoMixes(loadMusicLanguage()));
+
+  // User Authentication State (Google & Phone OTP)
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => loadCurrentUser());
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+  const [authReason, setAuthReason] = useState<string | undefined>(undefined);
+  const pendingActionRef = useRef<(() => void) | null>(null);
+
+  // Collections State (Scoped strictly to current active user account)
+  const [playlists, setPlaylists] = useState<Playlist[]>(() => loadPlaylists(loadCurrentUser()?.id));
+  const [likedTracks, setLikedTracks] = useState<MusicTrack[]>(() => loadLikedTracks(loadCurrentUser()?.id));
+  const [recentTracks, setRecentTracks] = useState<MusicTrack[]>(() => loadRecentTracks(loadCurrentUser()?.id));
+  const [pinnedPlaylistIds, setPinnedPlaylistIds] = useState<Set<string>>(() =>
+    loadPinnedPlaylists(loadCurrentUser()?.id)
+  );
   const [newReleases, setNewReleases] = useState<MusicTrack[]>([]);
 
   // Toast Notification State
@@ -94,14 +136,31 @@ export function App() {
   const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
   const [searchError, setSearchError] = useState<string | null>(null);
 
-  // Playback & Queue State
-  const [currentTrack, setCurrentTrack] = useState<MusicTrack | null>(null);
-  const [queue, setQueue] = useState<MusicTrack[]>([]);
+  // Continuous Cross-Device Sync State (Listening notice from another phone or laptop)
+  const [remoteSessionNotice, setRemoteSessionNotice] = useState<PlaybackSession | null>(null);
+
+  // Continuous Playback Persistence State
+  const initialPlaybackSession = useRef<PlaybackSession | null>(loadPlaybackSession());
+  const [initialStartTime, setInitialStartTime] = useState<number>(() => {
+    return initialPlaybackSession.current?.currentTime || 0;
+  });
+
+  // Playback & Queue State (Restored continuously from previous session if exists)
+  const [currentTrack, setCurrentTrack] = useState<MusicTrack | null>(
+    () => initialPlaybackSession.current?.track || null
+  );
+  const [queue, setQueue] = useState<MusicTrack[]>(
+    () => initialPlaybackSession.current?.queue || []
+  );
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [playerState, setPlayerState] = useState<YTPlayerStateName>('UNINITIALIZED');
   const [playerError, setPlayerError] = useState<PlayerErrorInfo | null>(null);
-  const [currentTime, setCurrentTime] = useState<number>(0);
-  const [duration, setDuration] = useState<number>(0);
+  const [currentTime, setCurrentTime] = useState<number>(
+    () => initialPlaybackSession.current?.currentTime || 0
+  );
+  const [duration, setDuration] = useState<number>(
+    () => initialPlaybackSession.current?.duration || 0
+  );
   const [volume, setVolume] = useState<number>(() => loadVolume());
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [isShuffle, setIsShuffle] = useState<boolean>(false);
@@ -121,10 +180,30 @@ export function App() {
   const [showQueue, setShowQueue] = useState<boolean>(false);
   const [addToPlaylistTrack, setAddToPlaylistTrack] = useState<MusicTrack | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState<boolean>(false);
+  const [isSpotifyImportModalOpen, setIsSpotifyImportModalOpen] = useState<boolean>(false);
+  const [spotifyImportTargetPlaylistId, setSpotifyImportTargetPlaylistId] = useState<string | null>(null);
   const [isExpandedView, setIsExpandedView] = useState<boolean>(false);
+
+  const handleOpenSpotifyImport = (targetPlaylistId?: string | null) => {
+    setSpotifyImportTargetPlaylistId(targetPlaylistId || null);
+    setIsSpotifyImportModalOpen(true);
+  };
 
   const playerRef = useRef<PlayerHandle | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  // State refs for continuous session saving on beforeunload / pagehide
+  const currentTrackRef = useRef(currentTrack);
+  currentTrackRef.current = currentTrack;
+  const currentTimeRef = useRef(currentTime);
+  currentTimeRef.current = currentTime;
+  const durationRef = useRef(duration);
+  durationRef.current = duration;
+  const queueRef = useRef(queue);
+  queueRef.current = queue;
+  const isPlayingRef = useRef(isPlaying);
+  isPlayingRef.current = isPlaying;
+  const lastSavedSessionTimeRef = useRef<number>(0);
 
   const handleQualityChange = (newQuality: AudioQuality) => {
     setAudioQuality(newQuality);
@@ -154,6 +233,14 @@ export function App() {
     return () => window.removeEventListener('contextmenu', handleContextMenu);
   }, []);
 
+  // Synchronize account-specific likes, library playlists, and listening history whenever active account changes
+  useEffect(() => {
+    const acId = currentUser?.id || null;
+    setPlaylists(loadPlaylists(acId));
+    setLikedTracks(loadLikedTracks(acId));
+    setRecentTracks(loadRecentTracks(acId));
+  }, [currentUser?.id]);
+
   // Initial health check and fetch new releases for home
   useEffect(() => {
     let isMounted = true;
@@ -166,9 +253,10 @@ export function App() {
       }
 
       try {
-        const nr = await searchTracks('New Releases', 1, 10, 'ytmusicapi', 'new_releases');
-        if (isMounted && nr.items.length > 0) {
-          setNewReleases(nr.items);
+        const nr = await searchTracks('New Releases', 1, 14, 'ytmusicapi', 'new_releases');
+        const clean = filterMusicTracks(nr.items);
+        if (isMounted && clean.length > 0) {
+          setNewReleases(clean);
         }
       } catch (err) {
         console.warn('Could not fetch new releases:', err);
@@ -181,24 +269,49 @@ export function App() {
     };
   }, []);
 
-  // 0. Smart "Made For You" Recommendation Algorithm (Likings + Plays + Searches)
+  // Real Living Algorithmic Auto Mixes Generator (Always algorithm, never fake cards)
+  useEffect(() => {
+    let isMounted = true;
+    const taste = getUserTasteProfile(likedTracks, recentTracks);
+
+    generateAlgorithmicMixes(taste, likedTracks, musicLanguage)
+      .then((generatedMixes) => {
+        if (isMounted && generatedMixes.length > 0) {
+          setAutoMixes(generatedMixes);
+        }
+      })
+      .catch((err) => {
+        console.warn('Algorithmic auto-mixes generation error:', err);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [likedTracks, recentTracks, musicLanguage]);
+
+  // 0. Smart "Made For You" Recommendation Algorithm (Taste + Likings + Language)
   useEffect(() => {
     let isMounted = true;
     const taste = getUserTasteProfile(likedTracks, recentTracks);
 
     let queryTarget = 'Trending Hits';
-    if (taste.length >= 2) {
+    if (musicLanguage && musicLanguage !== 'all') {
+      if (taste.length >= 1) {
+        queryTarget = `${taste[0]} ${musicLanguage} songs`;
+      } else {
+        queryTarget = `${musicLanguage} top hits songs`;
+      }
+    } else if (taste.length >= 2) {
       queryTarget = `${taste[0]} ${taste[1]} hits`;
     } else if (taste.length === 1) {
       queryTarget = `${taste[0]} songs`;
-    } else if (musicLanguage && musicLanguage !== 'all') {
-      queryTarget = `${musicLanguage} top songs`;
     }
 
-    searchTracks(queryTarget, 1, 10, 'ytmusicapi', 'songs')
+    searchTracks(queryTarget, 1, 14, 'ytmusicapi', 'songs')
       .then((res) => {
-        if (isMounted && res.items.length > 0) {
-          setMadeForYouTracks(res.items);
+        const clean = filterMusicTracks(res.items);
+        if (isMounted && clean.length > 0) {
+          setMadeForYouTracks(clean);
         }
       })
       .catch((err) => {
@@ -210,16 +323,19 @@ export function App() {
     };
   }, [likedTracks, recentTracks, musicLanguage]);
 
-  // 1. Language & Regional Recommendation Engine
+  // 1. Language & Regional Recommendation Engine (Syncs trending & new releases)
   useEffect(() => {
     let isMounted = true;
     setIsLanguageLoading(true);
 
     const languageQueryMap: Record<string, string> = {
       malayalam: 'Malayalam Hits Top Songs',
-      hindi: 'Trending Hindi Hits',
-      tamil: 'Latest Tamil Top Songs',
-      punjabi: 'Punjabi Hot Hits',
+      hindi: 'Trending Hindi Bollywood Hits',
+      tamil: 'Latest Tamil Top Songs Anirudh',
+      telugu: 'Trending Telugu Hits Tollywood',
+      punjabi: 'Punjabi Hot Hits Top Songs',
+      kannada: 'Latest Kannada Hits Songs',
+      bengali: 'Trending Bengali Hits Songs',
       english: 'Top Global Pop Hits',
       synthwave: 'Synthwave Midnight Beats',
       lofi: 'Lo-Fi Chill Beats',
@@ -230,10 +346,11 @@ export function App() {
 
     const targetQuery = languageQueryMap[musicLanguage] || 'Trending Global Music Charts';
 
-    searchTracks(targetQuery, 1, 10, 'ytmusicapi', 'songs')
+    searchTracks(targetQuery, 1, 14, 'ytmusicapi', 'songs')
       .then((res) => {
-        if (isMounted && res.items.length > 0) {
-          setLanguageTracks(res.items);
+        const clean = filterMusicTracks(res.items);
+        if (isMounted && clean.length > 0) {
+          setLanguageTracks(clean);
         }
       })
       .catch((err) => {
@@ -242,6 +359,32 @@ export function App() {
       .finally(() => {
         if (isMounted) setIsLanguageLoading(false);
       });
+
+    // Also adapt New Releases shelf to selected language
+    if (musicLanguage && musicLanguage !== 'all') {
+      const langReleasesMap: Record<string, string> = {
+        malayalam: 'Malayalam new songs releases',
+        hindi: 'Latest Hindi Bollywood new songs',
+        tamil: 'New Tamil songs releases Anirudh',
+        telugu: 'New Telugu songs releases Tollywood',
+        punjabi: 'Latest Punjabi songs releases',
+        kannada: 'Latest Kannada new songs',
+        bengali: 'Latest Bengali new songs',
+        english: 'New English Pop releases songs',
+        synthwave: 'New Synthwave releases',
+        lofi: 'New Lo-Fi chill releases',
+        music: 'Trending Hits new releases',
+      };
+      const relQuery = langReleasesMap[musicLanguage] || `${musicLanguage} new songs`;
+      searchTracks(relQuery, 1, 14, 'ytmusicapi', 'songs')
+        .then((res) => {
+          const clean = filterMusicTracks(res.items);
+          if (isMounted && clean.length > 0) {
+            setNewReleases(clean);
+          }
+        })
+        .catch((e) => console.warn('Language new releases fetch:', e));
+    }
 
     return () => {
       isMounted = false;
@@ -262,10 +405,11 @@ export function App() {
     if (!candidateQuery) return;
     setSearchRecQuery(candidateQuery);
 
-    searchTracks(candidateQuery, 1, 8, 'ytmusicapi', 'songs')
+    searchTracks(candidateQuery, 1, 14, 'ytmusicapi', 'songs')
       .then((res) => {
-        if (isMounted && res.items.length > 0) {
-          setSearchRecTracks(res.items);
+        const clean = filterMusicTracks(res.items);
+        if (isMounted && clean.length > 0) {
+          setSearchRecTracks(clean);
         }
       })
       .catch((err) => {
@@ -281,16 +425,18 @@ export function App() {
   useEffect(() => {
     let isMounted = true;
     const themeQueryMap: Record<ThemePalette, string> = {
+      noir: 'Midnight Ambient Lo-Fi Beats',
       cyber: 'Cyberpunk Synthwave Electro',
       amber: 'Warm Acoustic Soulful Indie',
       aurora: 'Dream Pop Ambient Indie',
     };
 
     const tQuery = themeQueryMap[theme] || 'Indie Chill';
-    searchTracks(tQuery, 1, 8, 'ytmusicapi', 'songs')
+    searchTracks(tQuery, 1, 14, 'ytmusicapi', 'songs')
       .then((res) => {
-        if (isMounted && res.items.length > 0) {
-          setThemeTracks(res.items);
+        const clean = filterMusicTracks(res.items);
+        if (isMounted && clean.length > 0) {
+          setThemeTracks(clean);
         }
       })
       .catch((err) => {
@@ -398,12 +544,17 @@ export function App() {
 
   // Playback Control Handlers
   const handlePlayTrack = (track: MusicTrack, newQueue?: MusicTrack[]) => {
+    setInitialStartTime(0);
     setCurrentTrack(track);
     setIsPlaying(true);
     setPlayerError(null);
 
-    // Track history & artist preference
-    setRecentTracks((prev) => [track, ...prev.filter((t) => t.id !== track.id)].slice(0, 20));
+    // Track history & artist preference (scoped per account)
+    setRecentTracks((prev) => {
+      const updated = [track, ...prev.filter((t) => t.id !== track.id)].slice(0, 20);
+      saveRecentTracks(updated, currentUser?.id);
+      return updated;
+    });
     if (track.artist) {
       addRecentArtist(track.artist);
     }
@@ -523,8 +674,254 @@ export function App() {
     showToast(labels[nextMode], 'info');
   };
 
-  // Liked Songs Management
+  // Continuous Playback Session Sync Listeners
+  useEffect(() => {
+    const saveStateOnLeave = () => {
+      if (currentTrackRef.current) {
+        savePlaybackSession({
+          track: currentTrackRef.current,
+          currentTime: currentTimeRef.current,
+          duration: durationRef.current,
+          queue: queueRef.current,
+          savedAt: Date.now(),
+          isPlaying: isPlayingRef.current,
+        });
+      }
+    };
+    window.addEventListener('beforeunload', saveStateOnLeave);
+    window.addEventListener('pagehide', saveStateOnLeave);
+    return () => {
+      window.removeEventListener('beforeunload', saveStateOnLeave);
+      window.removeEventListener('pagehide', saveStateOnLeave);
+    };
+  }, []);
+
+  // Show friendly notification if continuous playback session was restored
+  useEffect(() => {
+    if (initialPlaybackSession.current?.track && (initialPlaybackSession.current.currentTime || 0) > 0) {
+      const cur = Math.floor(initialPlaybackSession.current.currentTime);
+      const mins = Math.floor(cur / 60);
+      const secs = (cur % 60).toString().padStart(2, '0');
+      showToast(`Resumed "${initialPlaybackSession.current.track.title}" from ${mins}:${secs}`, 'info');
+    }
+  }, []);
+
+  // User Auth Actions & Handlers with Real-Time Cloud Sync
+  const handleLoginSuccess = (
+    user: UserProfile,
+    cloudPlaylists?: Playlist[],
+    cloudLikedTracks?: MusicTrack[]
+  ) => {
+    setCurrentUser(user);
+    saveCurrentUser(user);
+
+    // Load or apply account-specific library, likes, and listening history
+    const userPl =
+      cloudPlaylists && cloudPlaylists.length > 0
+        ? cloudPlaylists
+        : loadPlaylists(user.id);
+    const userLk =
+      cloudLikedTracks && cloudLikedTracks.length > 0
+        ? cloudLikedTracks
+        : loadLikedTracks(user.id);
+    const userRecent = loadRecentTracks(user.id);
+
+    setPlaylists(userPl);
+    savePlaylists(userPl, user.id);
+    setLikedTracks(userLk);
+    saveLikedTracks(userLk, user.id);
+    setRecentTracks(userRecent);
+    setPinnedPlaylistIds(loadPinnedPlaylists(user.id));
+
+    showToast(`Signed in as ${user.displayName}`, 'success');
+    if (pendingActionRef.current) {
+      const action = pendingActionRef.current;
+      pendingActionRef.current = null;
+      setTimeout(() => action(), 150);
+    }
+  };
+
+  // Firebase Auth State Subscription (Sync on login / token refresh)
+  useEffect(() => {
+    if (!isFirebaseConfigured()) return;
+    const unsubscribeAuth = onAuthStateSubscription((fbUser) => {
+      if (fbUser) {
+        setCurrentUser(fbUser);
+        saveCurrentUser(fbUser);
+      }
+    });
+    return () => {
+      if (unsubscribeAuth) unsubscribeAuth();
+    };
+  }, []);
+
+  // Cloud Synchronization: Real-Time Firestore & Cross-Device Sync
+  useEffect(() => {
+    if (!currentUser?.id) return;
+
+    // 1. Initial hydrate from cloud
+    syncUserDataFromCloud(currentUser.id).then((cloudData) => {
+      if (cloudData) {
+        if (Array.isArray(cloudData.playlists) && cloudData.playlists.length > 0) {
+          setPlaylists(cloudData.playlists);
+          savePlaylists(cloudData.playlists);
+        }
+        if (Array.isArray(cloudData.likedTracks) && cloudData.likedTracks.length > 0) {
+          setLikedTracks(cloudData.likedTracks);
+          saveLikedTracks(cloudData.likedTracks);
+        }
+        if (
+          cloudData.playbackSession?.track?.id &&
+          cloudData.playbackSession.deviceId !== getDeviceId() &&
+          Date.now() - (cloudData.playbackSession.savedAt || 0) < 86400000
+        ) {
+          setRemoteSessionNotice(cloudData.playbackSession);
+        }
+      }
+    });
+
+    // 2. Real-time Firestore snapshot subscription
+    let unsubscribeFirestore: (() => void) | null = null;
+    if (isFirebaseConfigured()) {
+      unsubscribeFirestore = subscribeToUserCloudData(currentUser.id, (cloudData) => {
+        if (Array.isArray(cloudData.playlists) && cloudData.playlists.length > 0) {
+          setPlaylists(cloudData.playlists);
+          savePlaylists(cloudData.playlists);
+        }
+        if (Array.isArray(cloudData.likedTracks) && cloudData.likedTracks.length > 0) {
+          setLikedTracks(cloudData.likedTracks);
+          saveLikedTracks(cloudData.likedTracks);
+        }
+        // Continuous playback sync from another device
+        if (
+          cloudData.playbackSession?.track?.id &&
+          cloudData.playbackSession.deviceId !== getDeviceId() &&
+          Date.now() - (cloudData.playbackSession.savedAt || 0) < 86400000
+        ) {
+          setRemoteSessionNotice(cloudData.playbackSession);
+        }
+      });
+    }
+
+    // 3. Focus & cross-tab sync fallback
+    const handleFocus = () => {
+      if (currentUser?.id) {
+        syncUserDataFromCloud(currentUser.id).then((cloudData) => {
+          if (cloudData) {
+            if (Array.isArray(cloudData.playlists) && cloudData.playlists.length > 0) {
+              setPlaylists(cloudData.playlists);
+            }
+            if (Array.isArray(cloudData.likedTracks) && cloudData.likedTracks.length > 0) {
+              setLikedTracks(cloudData.likedTracks);
+            }
+          }
+        });
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    const unsubscribeSync = listenToCrossTabSync(() => {
+      const storedUser = loadCurrentUser();
+      setCurrentUser(storedUser);
+      if (storedUser?.id) {
+        syncUserDataFromCloud(storedUser.id).then((cloudData) => {
+          if (cloudData) {
+            if (Array.isArray(cloudData.playlists)) {
+              setPlaylists(cloudData.playlists);
+            }
+            if (Array.isArray(cloudData.likedTracks)) {
+              setLikedTracks(cloudData.likedTracks);
+            }
+          }
+        });
+      }
+    });
+
+    return () => {
+      if (unsubscribeFirestore) unsubscribeFirestore();
+      window.removeEventListener('focus', handleFocus);
+      unsubscribeSync();
+    };
+  }, [currentUser?.id]);
+
+  // Periodic Playback Session Push to Cloud Firestore (every 10s while active)
+  useEffect(() => {
+    if (!isPlaying || !currentTrack || !currentUser?.id || !isFirebaseConfigured()) return;
+    const interval = setInterval(() => {
+      syncPlaybackSessionToFirestore(currentUser.id, {
+        track: currentTrack,
+        currentTime: currentTimeRef.current,
+        duration: durationRef.current,
+        queue: queueRef.current,
+        savedAt: Date.now(),
+        isPlaying: true,
+        deviceId: getDeviceId(),
+      });
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [isPlaying, currentTrack?.id, currentUser?.id]);
+
+  const handleLogout = () => {
+    // 1. Immediately stop all music and video playback completely
+    try {
+      playerRef.current?.stop?.();
+      playerRef.current?.pause();
+    } catch (e) {
+      console.warn('Error stopping player on logout:', e);
+    }
+    setCurrentTrack(null);
+    setIsPlaying(false);
+    setPlayerState('UNSTARTED');
+    setCurrentTime(0);
+    setDuration(0);
+    setQueue([]);
+    queueRef.current = [];
+    clearPlaybackSession();
+
+    // 2. Clear current user authentication
+    logoutUser();
+    setCurrentUser(null);
+
+    // 3. Reset library, likes, and listening history to clean guest state
+    const guestPlaylists = loadPlaylists(null);
+    const guestLikes = loadLikedTracks(null);
+    const guestRecent = loadRecentTracks(null);
+    setPlaylists(guestPlaylists);
+    setLikedTracks(guestLikes);
+    setRecentTracks(guestRecent);
+    setPinnedPlaylistIds(loadPinnedPlaylists(null));
+
+    showToast('Signed out of your account. Playback stopped.', 'info');
+  };
+
+  const handleOpenCreateModal = () => {
+    if (!currentUser) {
+      setAuthReason('Sign in with Google or Phone to create and save personal playlists');
+      pendingActionRef.current = () => setIsCreateModalOpen(true);
+      setIsAuthModalOpen(true);
+      return;
+    }
+    setIsCreateModalOpen(true);
+  };
+
+  const handleOpenAddToPlaylist = (track: MusicTrack) => {
+    if (!currentUser) {
+      setAuthReason('Sign in with Google or Phone to add tracks to your playlists');
+      pendingActionRef.current = () => setAddToPlaylistTrack(track);
+      setIsAuthModalOpen(true);
+      return;
+    }
+    setAddToPlaylistTrack(track);
+  };
+
+  // Liked Songs Management (Auth-Gated)
   const handleToggleLike = (track: MusicTrack) => {
+    if (!currentUser) {
+      setAuthReason('Sign in with Google or Phone to save songs to your Liked Songs collection');
+      pendingActionRef.current = () => handleToggleLike(track);
+      setIsAuthModalOpen(true);
+      return;
+    }
     const isAlreadyLiked = likedTrackIds.has(track.id);
     let updated: MusicTrack[];
     if (isAlreadyLiked) {
@@ -536,6 +933,9 @@ export function App() {
     }
     setLikedTracks(updated);
     saveLikedTracks(updated);
+    if (currentUser?.id) {
+      syncUserDataToCloud(currentUser.id, playlists, updated);
+    }
   };
 
   // Synchronize resolved playable stream information
@@ -552,6 +952,9 @@ export function App() {
         const updated = [...prev];
         updated[idx] = { ...updated[idx], ...resolvedTrack };
         saveLikedTracks(updated);
+        if (currentUser?.id) {
+          syncUserDataToCloud(currentUser.id, playlists, updated);
+        }
         return updated;
       }
       return prev;
@@ -574,13 +977,24 @@ export function App() {
         }
         return pl;
       });
-      if (changed) savePlaylists(updated);
+      if (changed) {
+        savePlaylists(updated);
+        if (currentUser?.id) {
+          syncUserDataToCloud(currentUser.id, updated, likedTracks);
+        }
+      }
       return updated;
     });
   };
 
-  // Custom Playlists Management
+  // Custom Playlists Management (Auth-Gated & Cloud-Synced)
   const handleCreatePlaylist = (name: string, initialTrack?: MusicTrack) => {
+    if (!currentUser) {
+      setAuthReason('Sign in with Google or Phone to create and manage personal playlists');
+      pendingActionRef.current = () => handleCreatePlaylist(name, initialTrack);
+      setIsAuthModalOpen(true);
+      return;
+    }
     const newPlaylist: Playlist = {
       id: `playlist-${Date.now()}`,
       name,
@@ -594,21 +1008,185 @@ export function App() {
     const updated = [newPlaylist, ...playlists];
     setPlaylists(updated);
     savePlaylists(updated);
+    if (currentUser?.id) {
+      syncUserDataToCloud(currentUser.id, updated, likedTracks);
+    }
     showToast(`Created playlist "${name}"`);
     navigateTo('playlist', newPlaylist.id);
+  };
+
+  // Image to Playlist: Imports songs from Spotify screenshot with strict deduplication
+  const handleImportTracksFromImage = (
+    destination: { type: 'new'; name: string } | { type: 'existing'; playlistId: string },
+    tracksToAdd: MusicTrack[]
+  ) => {
+    if (!tracksToAdd || tracksToAdd.length === 0) return;
+
+    if (destination.type === 'new') {
+      const newPlaylist: Playlist = {
+        id: `playlist-${Date.now()}`,
+        name: destination.name.trim() || 'Spotify Import',
+        description: `Imported with ${tracksToAdd.length} songs.`,
+        coverUrl: tracksToAdd[0]?.thumbnailUrl,
+        createdAt: new Date().toISOString(),
+        isCustom: true,
+        tracks: tracksToAdd,
+      };
+
+      const updated = [newPlaylist, ...playlists];
+      setPlaylists(updated);
+      savePlaylists(updated, currentUser?.id);
+      if (currentUser?.id) {
+        syncUserDataToCloud(currentUser.id, updated, likedTracks);
+      }
+      showToast(`Created playlist "${newPlaylist.name}" with ${tracksToAdd.length} songs!`, 'success');
+      navigateTo('playlist', newPlaylist.id);
+    } else {
+      // 1. Check if target is Liked Songs
+      if (destination.playlistId === 'playlist-liked-songs') {
+        const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const uniqueNewTracks = tracksToAdd.filter((track) => {
+          const idMatch = likedTracks.some((t) => t.id === track.id);
+          const nameMatch = likedTracks.some(
+            (t) => norm(t.title) === norm(track.title) && norm(t.artist) === norm(track.artist)
+          );
+          return !idMatch && !nameMatch;
+        });
+
+        const duplicateCount = tracksToAdd.length - uniqueNewTracks.length;
+
+        if (uniqueNewTracks.length === 0) {
+          showToast(
+            `All ${tracksToAdd.length} songs already exist in Liked Songs. No duplicates added.`,
+            'info'
+          );
+          navigateTo('liked');
+          return;
+        }
+
+        const updatedLikes = [...uniqueNewTracks, ...likedTracks];
+        setLikedTracks(updatedLikes);
+        saveLikedTracks(updatedLikes, currentUser?.id);
+        if (currentUser?.id) {
+          syncUserDataToCloud(currentUser.id, playlists, updatedLikes);
+        }
+
+        showToast(
+          duplicateCount > 0
+            ? `Added ${uniqueNewTracks.length} song${uniqueNewTracks.length === 1 ? '' : 's'} to Liked Songs (${duplicateCount} duplicate${duplicateCount === 1 ? '' : 's'} skipped to prevent repeats).`
+            : `Added ${uniqueNewTracks.length} song${uniqueNewTracks.length === 1 ? '' : 's'} to Liked Songs!`,
+          'success'
+        );
+        navigateTo('liked');
+        return;
+      }
+
+      // 2. Target custom or library playlist
+      const target = playlists.find((p) => p.id === destination.playlistId);
+      if (!target) return;
+
+      const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+      // Strict duplicate check to prevent song loops and repeats
+      const uniqueNewTracks = tracksToAdd.filter((track) => {
+        const idMatch = target.tracks.some((t) => t.id === track.id);
+        const nameMatch = target.tracks.some(
+          (t) => norm(t.title) === norm(track.title) && norm(t.artist) === norm(track.artist)
+        );
+        return !idMatch && !nameMatch;
+      });
+
+      const duplicateCount = tracksToAdd.length - uniqueNewTracks.length;
+
+      if (uniqueNewTracks.length === 0) {
+        showToast(
+          `All ${tracksToAdd.length} songs already exist in "${target.name}". No duplicates added.`,
+          'info'
+        );
+        navigateTo('playlist', target.id);
+        return;
+      }
+
+      const updatedPlaylist: Playlist = {
+        ...target,
+        tracks: [...target.tracks, ...uniqueNewTracks],
+        coverUrl: target.coverUrl || uniqueNewTracks[0]?.thumbnailUrl,
+      };
+
+      const updated = playlists.map((p) => (p.id === target.id ? updatedPlaylist : p));
+      setPlaylists(updated);
+      savePlaylists(updated, currentUser?.id);
+      if (currentUser?.id) {
+        syncUserDataToCloud(currentUser.id, updated, likedTracks);
+      }
+
+      showToast(
+        duplicateCount > 0
+          ? `Added ${uniqueNewTracks.length} song${uniqueNewTracks.length === 1 ? '' : 's'} to "${target.name}" (${duplicateCount} duplicate${duplicateCount === 1 ? '' : 's'} skipped to prevent repeat loops).`
+          : `Added ${uniqueNewTracks.length} song${uniqueNewTracks.length === 1 ? '' : 's'} to "${target.name}"!`,
+        'success'
+      );
+      navigateTo('playlist', target.id);
+    }
   };
 
   const handleDeletePlaylist = (playlistId: string) => {
     const updated = playlists.filter((p) => p.id !== playlistId);
     setPlaylists(updated);
     savePlaylists(updated);
+    if (currentUser?.id) {
+      syncUserDataToCloud(currentUser.id, updated, likedTracks);
+    }
+    setPinnedPlaylistIds((prev) => {
+      if (!prev.has(playlistId)) return prev;
+      const next = new Set(prev);
+      next.delete(playlistId);
+      savePinnedPlaylists(next, currentUser?.id);
+      return next;
+    });
     showToast('Playlist deleted', 'info');
     if (selectedPlaylistId === playlistId) {
       navigateTo('home');
     }
   };
 
+  const handleRenamePlaylist = (playlistId: string, newName: string) => {
+    const trimmed = newName.trim();
+    if (!trimmed) return;
+    const updated = playlists.map((p) =>
+      p.id === playlistId ? { ...p, name: trimmed } : p
+    );
+    setPlaylists(updated);
+    savePlaylists(updated, currentUser?.id);
+    if (currentUser?.id) {
+      syncUserDataToCloud(currentUser.id, updated, likedTracks);
+    }
+    showToast(`Renamed playlist to "${trimmed}"`, 'success');
+  };
+
+  const handleTogglePinPlaylist = (playlistId: string) => {
+    setPinnedPlaylistIds((prev) => {
+      const next = new Set(prev);
+      const isPinned = next.has(playlistId);
+      if (isPinned) {
+        next.delete(playlistId);
+        showToast('Unpinned from top of Library', 'info');
+      } else {
+        next.add(playlistId);
+        showToast('Pinned to top of Library');
+      }
+      savePinnedPlaylists(next, currentUser?.id);
+      return next;
+    });
+  };
+
   const handleAddToPlaylist = (playlistId: string, track: MusicTrack) => {
+    if (!currentUser) {
+      setAuthReason('Sign in with Google or Phone to add tracks to playlists');
+      pendingActionRef.current = () => handleAddToPlaylist(playlistId, track);
+      setIsAuthModalOpen(true);
+      return;
+    }
     const target = playlists.find((p) => p.id === playlistId);
     if (!target) return;
 
@@ -627,6 +1205,9 @@ export function App() {
     const updated = playlists.map((p) => (p.id === playlistId ? updatedPlaylist : p));
     setPlaylists(updated);
     savePlaylists(updated);
+    if (currentUser?.id) {
+      syncUserDataToCloud(currentUser.id, updated, likedTracks);
+    }
     showToast(`Added to "${target.name}"`);
   };
 
@@ -643,6 +1224,9 @@ export function App() {
     const updated = playlists.map((p) => (p.id === playlistId ? updatedPlaylist : p));
     setPlaylists(updated);
     savePlaylists(updated);
+    if (currentUser?.id) {
+      syncUserDataToCloud(currentUser.id, updated, likedTracks);
+    }
     showToast('Track removed from playlist');
   };
 
@@ -693,12 +1277,27 @@ export function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isPlaying, currentTrack, currentTime, recentTracks, queue, isMuted, isShuffle, repeatMode]);
 
-  // Find currently open playlist
-  const currentPlaylist = playlists.find((p) => p.id === selectedPlaylistId) || null;
+  // User imported & user created playlists on top, with pinned playlists hoisted to the very top
+  const allPlaylists = useMemo(() => {
+    const combined = [...playlists, ...autoMixes];
+    return combined.sort((a, b) => {
+      const aPinned = pinnedPlaylistIds.has(a.id);
+      const bPinned = pinnedPlaylistIds.has(b.id);
+      if (aPinned && !bPinned) return -1;
+      if (!aPinned && bPinned) return 1;
+
+      // User created & imported playlists on top of system auto-mixes
+      if (a.isCustom && !b.isCustom) return -1;
+      if (!a.isCustom && b.isCustom) return 1;
+
+      return 0;
+    });
+  }, [playlists, autoMixes, pinnedPlaylistIds]);
+  const currentPlaylist = allPlaylists.find((p) => p.id === selectedPlaylistId) || null;
 
   return (
     <div
-      className="spotify-desktop-app-frame"
+      className={`spotify-desktop-app-frame ${currentTrack ? 'has-player' : 'no-player'}`}
       data-theme={theme}
       data-current-view={currentView}
       onContextMenu={(e) => e.preventDefault()}
@@ -708,13 +1307,18 @@ export function App() {
         <Sidebar
           currentView={currentView}
           onNavigate={navigateTo}
-          playlists={playlists}
+          playlists={allPlaylists}
           selectedPlaylistId={selectedPlaylistId}
           likedCount={likedTracks.length}
           likedTracks={likedTracks}
           onPlayTrack={handlePlayTrack}
-          onOpenCreateModal={() => setIsCreateModalOpen(true)}
+          onOpenCreateModal={handleOpenCreateModal}
           onDeletePlaylist={handleDeletePlaylist}
+          currentUser={currentUser}
+          onOpenAuthModal={() => {
+            setAuthReason(undefined);
+            setIsAuthModalOpen(true);
+          }}
           onQuickExplore={(category) => {
             navigateTo('search');
             if (category === 'new_releases') {
@@ -741,6 +1345,11 @@ export function App() {
             onGoForward={handleGoForward}
             canGoBack={historyIndex > 0}
             canGoForward={historyIndex < viewHistory.length - 1}
+            currentUser={currentUser}
+            onOpenAuthModal={() => {
+              setAuthReason(undefined);
+              setIsAuthModalOpen(true);
+            }}
           />
 
           <main className="spotify-scrollable-canvas">
@@ -748,6 +1357,7 @@ export function App() {
             {currentView === 'home' && (
               <HomeView
                 playlists={playlists}
+                autoMixes={autoMixes}
                 likedTracks={likedTracks}
                 recentTracks={recentTracks}
                 newReleases={newReleases}
@@ -806,7 +1416,7 @@ export function App() {
                   isLoadingMore={isLoadingMore}
                   error={searchError}
                   onRetry={() => performSearch(query, selectedFilter, 1, false)}
-                  onSelectTrack={(t) => handlePlayTrack(t, searchResults)}
+                  onSelectTrack={(t, q) => handlePlayTrack(t, q || searchResults)}
                   activeTrackId={currentTrack?.id}
                   hasMore={hasMore}
                   onLoadMore={() => {
@@ -820,7 +1430,15 @@ export function App() {
                   query={query}
                   likedTrackIds={likedTrackIds}
                   onToggleLike={handleToggleLike}
-                  onOpenAddToPlaylist={(t) => setAddToPlaylistTrack(t)}
+                  onOpenAddToPlaylist={handleOpenAddToPlaylist}
+                  recentTracks={recentTracks}
+                  likedTracks={likedTracks}
+                  algorithmicTracks={madeForYouTracks.length > 0 ? madeForYouTracks : languageTracks}
+                  searchHistory={loadSearchHistory()}
+                  onClearHistory={() => {
+                    clearSearchHistory(currentUser?.id);
+                    showToast('Search history cleared', 'info');
+                  }}
                 />
               </div>
             )}
@@ -837,9 +1455,12 @@ export function App() {
                 onToggleLike={handleToggleLike}
                 onRemoveTrack={handleRemoveTrackFromPlaylist}
                 onDeletePlaylist={handleDeletePlaylist}
-                onOpenAddToPlaylist={(t) => setAddToPlaylistTrack(t)}
+                onOpenAddToPlaylist={handleOpenAddToPlaylist}
                 onPlayNext={handlePlayNext}
                 onAddToQueue={handleAddToQueue}
+                isPinned={pinnedPlaylistIds.has(currentPlaylist.id)}
+                onTogglePin={handleTogglePinPlaylist}
+                onRenamePlaylist={handleRenamePlaylist}
               />
             )}
 
@@ -871,7 +1492,7 @@ export function App() {
                   if (target) handleToggleLike(target);
                 }}
                 onDeletePlaylist={() => {}}
-                onOpenAddToPlaylist={(t) => setAddToPlaylistTrack(t)}
+                onOpenAddToPlaylist={handleOpenAddToPlaylist}
                 onPlayNext={handlePlayNext}
                 onAddToQueue={handleAddToQueue}
               />
@@ -880,16 +1501,19 @@ export function App() {
             {/* LIBRARY VIEW (MOBILE & DESKTOP) */}
             {currentView === 'library' && (
               <LibraryView
-                playlists={playlists}
+                playlists={allPlaylists}
                 likedTracks={likedTracks}
                 onOpenPlaylist={(plId) => navigateTo('playlist', plId)}
                 onOpenLiked={() => navigateTo('liked')}
                 onPlayPlaylist={handlePlayPlaylist}
                 onPlayTrack={(t, q) => handlePlayTrack(t, q)}
-                onOpenCreateModal={() => setIsCreateModalOpen(true)}
+                onOpenCreateModal={handleOpenCreateModal}
+                onOpenSpotifyImport={() => handleOpenSpotifyImport(null)}
                 onDeletePlaylist={handleDeletePlaylist}
                 currentTrackId={currentTrack?.id}
                 isPlaying={isPlaying}
+                pinnedPlaylistIds={pinnedPlaylistIds}
+                onTogglePinPlaylist={handleTogglePinPlaylist}
               />
             )}
 
@@ -912,6 +1536,14 @@ export function App() {
                 audioNormalization={audioNormalization}
                 onNormalizationChange={handleNormalizationChange}
                 onGoBack={handleGoBack}
+                currentUser={currentUser}
+                onOpenAuthModal={() => {
+                  setAuthReason(undefined);
+                  setIsAuthModalOpen(true);
+                }}
+                onLogout={handleLogout}
+                likedTracksCount={likedTracks.length}
+                playlistsCount={playlists.length}
               />
             )}
           </main>
@@ -922,6 +1554,7 @@ export function App() {
       <PlayerTestPanel
         ref={playerRef}
         selectedTrack={currentTrack}
+        initialStartTime={initialStartTime}
         onPlayerStateChange={(state) => {
           setPlayerState(state);
           if (state === 'PLAYING') {
@@ -940,8 +1573,27 @@ export function App() {
         onTimeUpdate={(cur, tot) => {
           setCurrentTime(cur);
           if (tot > 0) setDuration(tot);
+
+          // Continuously save current playback position to localStorage session
+          const now = Date.now();
+          if (currentTrack && (now - lastSavedSessionTimeRef.current > 1500)) {
+            lastSavedSessionTimeRef.current = now;
+            savePlaybackSession({
+              track: currentTrack,
+              currentTime: cur,
+              duration: tot > 0 ? tot : duration,
+              queue,
+              savedAt: now,
+              isPlaying: isPlaying,
+            });
+          }
         }}
-        onTrackEnded={handleTrackEnded}
+        onTrackEnded={() => {
+          handleTrackEnded();
+          if (queue.length === 0 && repeatMode !== 'all') {
+            clearPlaybackSession();
+          }
+        }}
         playerState={playerState}
         playerError={playerError}
         isExpanded={isExpandedView}
@@ -1005,6 +1657,11 @@ export function App() {
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
         onCreate={(name, desc, cover) => {
+          if (!currentUser) {
+            setAuthReason('Sign in with Google or Phone to create personal playlists');
+            setIsAuthModalOpen(true);
+            return;
+          }
           const newPlaylist: Playlist = {
             id: `playlist-${Date.now()}`,
             name,
@@ -1022,56 +1679,135 @@ export function App() {
         }}
       />
 
-
-      {/* Windows Toast Notification */}
-      <Toast toast={toast} onDismiss={() => setToast(null)} />
-
-      {/* Persistent Bottom Playback Transport Bar */}
-      <BottomPlayer
-        currentTrack={currentTrack}
-        isPlaying={isPlaying}
-        playerState={playerState}
-        currentTime={currentTime}
-        duration={duration}
-        volume={volume}
-        isMuted={isMuted}
-        isShuffle={isShuffle}
-        repeatMode={repeatMode}
-        isLiked={currentTrack ? likedTrackIds.has(currentTrack.id) : false}
-        showQueue={showQueue}
-        quality={audioQuality}
-        onQualityChange={handleQualityChange}
-        onOpenExpanded={() => {
-          if (currentTrack) {
-            setIsExpandedView(true);
-          } else {
-            showToast('Select a song first to open theater mode', 'info');
-          }
+      {/* Spotify Import Modal (Direct Spotify link import, no glow, simple paste) */}
+      <SpotifyImportModal
+        isOpen={isSpotifyImportModalOpen}
+        onClose={() => {
+          setIsSpotifyImportModalOpen(false);
+          setSpotifyImportTargetPlaylistId(null);
         }}
-        onTogglePlay={handleTogglePlay}
-        onPrevTrack={handlePrevTrack}
-        onNextTrack={() => handleNextTrack(true)}
-        onSeek={handleSeek}
-        onVolumeChange={handleVolumeChange}
-        onToggleMute={handleToggleMute}
-        onToggleShuffle={() => {
-          setIsShuffle(!isShuffle);
-          showToast(!isShuffle ? 'Shuffle turned on' : 'Shuffle turned off');
-        }}
-        onCycleRepeat={handleCycleRepeat}
-        onToggleLike={(t) => handleToggleLike(t)}
-        onOpenAddToPlaylist={(t) => setAddToPlaylistTrack(t)}
-        onToggleQueue={() => setShowQueue(!showQueue)}
+        playlists={[
+          {
+            id: 'playlist-liked-songs',
+            name: 'Liked Songs',
+            description: 'Your liked songs collection',
+            createdAt: '',
+            isCustom: false,
+            tracks: likedTracks,
+          },
+          ...playlists,
+        ]}
+        initialPlaylistId={spotifyImportTargetPlaylistId}
+        onImportTracks={handleImportTracksFromImage}
       />
+
+      {/* Authentication Modal (Google & Phone OTP with Real Cloud Sync) */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => {
+          setIsAuthModalOpen(false);
+          pendingActionRef.current = null;
+        }}
+        onLoginSuccess={handleLoginSuccess}
+        reason={authReason}
+        currentPlaylists={playlists}
+        currentLikedTracks={likedTracks}
+      />
+
+      {/* Ambient Toast Notification */}
+      <Toast
+        toast={toast}
+        onDismiss={() => setToast(null)}
+        hasCurrentTrack={Boolean(currentTrack)}
+      />
+
+      {/* Continuous Playback Prompt from Another Device */}
+      {remoteSessionNotice && remoteSessionNotice.track && (
+        <div className="continuous-sync-banner">
+          <div className="continuous-sync-info">
+            <span className="continuous-sync-badge">
+              <Flame size={13} className="text-amber" />
+              Listening on {remoteSessionNotice.deviceName || 'another device'}
+            </span>
+            <span className="continuous-sync-title">
+              {remoteSessionNotice.track.title} • {remoteSessionNotice.track.artist}
+            </span>
+          </div>
+          <div className="continuous-sync-actions">
+            <button
+              type="button"
+              className="continuous-sync-resume-btn"
+              onClick={() => {
+                if (remoteSessionNotice.track) {
+                  handlePlayTrack(remoteSessionNotice.track, remoteSessionNotice.queue || []);
+                  if ((remoteSessionNotice.currentTime || 0) > 0) {
+                    setTimeout(() => {
+                      handleSeek(remoteSessionNotice.currentTime);
+                    }, 350);
+                  }
+                  showToast(`Resumed "${remoteSessionNotice.track.title}" from other device!`, 'success');
+                }
+                setRemoteSessionNotice(null);
+              }}
+            >
+              Continue Playing
+            </button>
+            <button
+              type="button"
+              className="continuous-sync-close-btn"
+              onClick={() => setRemoteSessionNotice(null)}
+              aria-label="Dismiss banner"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Persistent Bottom Playback Transport Bar — Only rendered when a track is loaded/playing */}
+      {currentTrack && (
+        <BottomPlayer
+          currentTrack={currentTrack}
+          isPlaying={isPlaying}
+          playerState={playerState}
+          currentTime={currentTime}
+          duration={duration}
+          volume={volume}
+          isMuted={isMuted}
+          isShuffle={isShuffle}
+          repeatMode={repeatMode}
+          isLiked={likedTrackIds.has(currentTrack.id)}
+          showQueue={showQueue}
+          quality={audioQuality}
+          onQualityChange={handleQualityChange}
+          onOpenExpanded={() => {
+            setIsExpandedView(true);
+          }}
+          onTogglePlay={handleTogglePlay}
+          onPrevTrack={handlePrevTrack}
+          onNextTrack={() => handleNextTrack(true)}
+          onSeek={handleSeek}
+          onVolumeChange={handleVolumeChange}
+          onToggleMute={handleToggleMute}
+          onToggleShuffle={() => {
+            setIsShuffle(!isShuffle);
+            showToast(!isShuffle ? 'Shuffle turned on' : 'Shuffle turned off');
+          }}
+          onCycleRepeat={handleCycleRepeat}
+          onToggleLike={(t) => handleToggleLike(t)}
+          onOpenAddToPlaylist={handleOpenAddToPlaylist}
+          onToggleQueue={() => setShowQueue(!showQueue)}
+        />
+      )}
 
       {/* Fixed Mobile Bottom Navigation Bar (No Premium Button, 4 Essential Tabs) */}
       <MobileBottomNav
         currentView={currentView}
         onNavigate={navigateTo}
-        onOpenCreateModal={() => setIsCreateModalOpen(true)}
+        onOpenCreateModal={handleOpenCreateModal}
       />
 
-      {/* Spotify-style Mini Pop-up Window on Minimize / Tab Change */}
+      {/* Spotify-style Mini Pop-up Window on Minimize / Tab Change (Image 3 UI) */}
       <MiniPlayerPopup
         currentTrack={currentTrack}
         isPlaying={isPlaying}
@@ -1079,11 +1815,14 @@ export function App() {
         duration={duration}
         volume={volume}
         isMuted={isMuted}
+        isLiked={currentTrack ? likedTrackIds.has(currentTrack.id) : false}
+        onToggleLike={(t) => handleToggleLike(t)}
         onTogglePlay={handleTogglePlay}
         onNextTrack={() => handleNextTrack(true)}
         onPrevTrack={handlePrevTrack}
         onSeek={handleSeek}
         onToggleMute={handleToggleMute}
+        onOpenExpanded={() => setIsExpandedView(true)}
       />
     </div>
   );

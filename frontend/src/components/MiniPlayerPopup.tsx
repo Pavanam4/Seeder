@@ -1,6 +1,17 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Maximize2 } from 'lucide-react';
+import {
+  Play,
+  Pause,
+  SkipBack,
+  SkipForward,
+  Maximize2,
+  X,
+  Check,
+  Plus,
+  Sliders,
+  ExternalLink,
+} from 'lucide-react';
 import type { MusicTrack } from '../types';
 
 interface MiniPlayerPopupProps {
@@ -10,17 +21,20 @@ interface MiniPlayerPopupProps {
   duration: number;
   volume: number;
   isMuted: boolean;
+  isLiked?: boolean;
   onTogglePlay: () => void;
   onNextTrack: () => void;
   onPrevTrack: () => void;
   onSeek: (seconds: number) => void;
   onToggleMute: () => void;
+  onToggleLike?: (track: MusicTrack) => void;
   onOpenApp?: () => void;
+  onOpenExpanded?: () => void;
   autoPopOnMinimize?: boolean;
 }
 
 const FALLBACK_POPUP_ART =
-  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%231f1d1a'/%3E%3Ccircle cx='50' cy='50' r='32' fill='%232a2622'/%3E%3Cpath d='M44 34v32l22-16z' fill='%23f59e0b'/%3E%3C/svg%3E";
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23121212'/%3E%3Ccircle cx='50' cy='50' r='32' fill='%23222222'/%3E%3Cpath d='M44 34v32l22-16z' fill='%231ed760'/%3E%3C/svg%3E";
 
 export const MiniPlayerPopup: React.FC<MiniPlayerPopupProps> = ({
   currentTrack,
@@ -29,12 +43,15 @@ export const MiniPlayerPopup: React.FC<MiniPlayerPopupProps> = ({
   duration,
   volume,
   isMuted,
+  isLiked = false,
   onTogglePlay,
   onNextTrack,
   onPrevTrack,
   onSeek,
   onToggleMute,
+  onToggleLike,
   onOpenApp,
+  onOpenExpanded,
   autoPopOnMinimize = true,
 }) => {
   const [pipWindow, setPipWindow] = useState<Window | null>(null);
@@ -42,15 +59,35 @@ export const MiniPlayerPopup: React.FC<MiniPlayerPopupProps> = ({
   const pipWindowRef = useRef<Window | null>(null);
   const isOpeningRef = useRef(false);
 
+  // Position for in-app draggable popup
+  const [position, setPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const isDraggingRef = useRef(false);
+  const dragStartRef = useRef<{ mouseX: number; mouseY: number; startX: number; startY: number }>({
+    mouseX: 0,
+    mouseY: 0,
+    startX: 0,
+    startY: 0,
+  });
+
   // Keep ref synced
   useEffect(() => {
     pipWindowRef.current = pipWindow;
   }, [pipWindow]);
 
-  // Request Document Picture-in-Picture window
+  const formatTime = (secs: number) => {
+    if (isNaN(secs) || secs < 0) return '0:00';
+    const m = Math.floor(secs / 60);
+    const s = Math.floor(secs % 60);
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  };
+
+  const effectiveDuration = duration > 0 ? duration : currentTrack?.durationSeconds || 180;
+  const progressPercent = effectiveDuration > 0 ? (currentTime / effectiveDuration) * 100 : 0;
+
+  // Request Document Picture-in-Picture window if supported, otherwise open in-app popup
   const openMiniPlayer = useCallback(async () => {
     if (!('documentPictureInPicture' in window)) {
-      console.info('Document Picture-in-Picture API is not supported in this browser.');
+      setShowInAppPopup(true);
       return;
     }
 
@@ -64,8 +101,8 @@ export const MiniPlayerPopup: React.FC<MiniPlayerPopupProps> = ({
 
     try {
       const win = await (window as any).documentPictureInPicture.requestWindow({
-        width: 360,
-        height: 130,
+        width: 270,
+        height: 315,
       });
 
       // Inject styling into PiP window
@@ -77,7 +114,7 @@ export const MiniPlayerPopup: React.FC<MiniPlayerPopupProps> = ({
           box-sizing: border-box;
         }
         body {
-          background: #12100e;
+          background: #000000;
           color: #ffffff;
           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
           overflow: hidden;
@@ -90,122 +127,130 @@ export const MiniPlayerPopup: React.FC<MiniPlayerPopupProps> = ({
           display: flex;
           flex-direction: column;
           height: 100%;
-          background: linear-gradient(135deg, #181512 0%, #0e0d0b 100%);
-          border: 1px solid rgba(255, 255, 255, 0.08);
+          background: #000000;
+          padding: 10px 12px;
         }
-        .pip-main-row {
+        .pip-header {
           display: flex;
           align-items: center;
-          gap: 12px;
-          padding: 12px 14px;
-          flex: 1;
-          min-width: 0;
+          justify-content: space-between;
+          padding-bottom: 8px;
+          color: #a7a7a7;
+          font-size: 0.76rem;
+          font-weight: 600;
         }
         .pip-art-wrap {
-          width: 52px;
-          height: 52px;
-          min-width: 52px;
+          width: 100%;
+          height: 155px;
           border-radius: 8px;
           overflow: hidden;
-          position: relative;
-          box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6);
-          background: #24201c;
+          background: #111111;
+          box-shadow: 0 4px 16px rgba(0, 0, 0, 0.7);
         }
         .pip-art-img {
           width: 100%;
           height: 100%;
           object-fit: cover;
         }
-        .pip-track-meta {
+        .pip-meta-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-top: 8px;
+          gap: 8px;
+        }
+        .pip-titles {
           flex: 1;
           min-width: 0;
-          display: flex;
-          flex-direction: column;
-          gap: 3px;
         }
-        .pip-track-title {
-          font-size: 0.88rem;
-          font-weight: 700;
+        .pip-title {
+          font-size: 1.02rem;
+          font-weight: 800;
           color: #ffffff;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
         }
-        .pip-track-artist {
-          font-size: 0.74rem;
-          color: #a1a1aa;
+        .pip-artist {
+          font-size: 0.78rem;
+          color: #a7a7a7;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
+          margin-top: 2px;
+        }
+        .pip-check-badge {
+          width: 26px;
+          height: 26px;
+          border-radius: 50%;
+          background: #1ed760;
+          color: #05240c;
+          border: none;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          flex-shrink: 0;
+        }
+        .pip-progress-row {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          margin-top: 8px;
+        }
+        .pip-time {
+          font-size: 0.7rem;
+          color: #a7a7a7;
+          min-width: 26px;
+        }
+        .pip-progress-track {
+          flex: 1;
+          height: 3px;
+          background: rgba(255, 255, 255, 0.15);
+          border-radius: 2px;
+          cursor: pointer;
+          position: relative;
+        }
+        .pip-progress-fill {
+          height: 100%;
+          background: #1ed760;
+          border-radius: 2px;
         }
         .pip-controls {
           display: flex;
           align-items: center;
-          gap: 6px;
-          flex-shrink: 0;
+          justify-content: center;
+          gap: 16px;
+          margin-top: 8px;
         }
         .pip-ctrl-btn {
           background: transparent;
           border: none;
-          color: #d4d4d8;
-          width: 30px;
-          height: 30px;
-          border-radius: 50%;
+          color: #b3b3b3;
+          cursor: pointer;
           display: flex;
           align-items: center;
           justify-content: center;
-          cursor: pointer;
-          transition: all 0.15s ease;
         }
         .pip-ctrl-btn:hover {
           color: #ffffff;
-          background: rgba(255, 255, 255, 0.12);
         }
         .pip-play-btn {
-          width: 38px;
-          height: 38px;
+          width: 34px;
+          height: 34px;
           border-radius: 50%;
-          background: #f59e0b;
-          color: #120e0a;
+          background: #ffffff;
+          color: #05240c;
           border: none;
+          cursor: pointer;
           display: flex;
           align-items: center;
           justify-content: center;
-          cursor: pointer;
-          box-shadow: 0 2px 10px rgba(245, 158, 11, 0.45);
-          transition: transform 0.15s ease, background 0.15s ease;
-        }
-        .pip-play-btn:hover {
-          transform: scale(1.08);
-          background: #fbbf24;
-        }
-        .pip-progress-row {
-          height: 4px;
-          background: rgba(255, 255, 255, 0.08);
-          width: 100%;
-          position: relative;
-          cursor: pointer;
-        }
-        .pip-progress-bar {
-          height: 100%;
-          background: #f59e0b;
-          transition: width 0.2s linear;
-        }
-        .pip-badge {
-          position: absolute;
-          top: 6px;
-          right: 8px;
-          font-size: 0.62rem;
-          font-weight: 700;
-          color: #f59e0b;
-          text-transform: uppercase;
-          letter-spacing: 0.05em;
-          opacity: 0.8;
         }
       `;
       win.document.head.appendChild(styleEl);
 
-      win.document.title = `Seeder Play • ${currentTrack?.title || 'Now Playing'}`;
+      win.document.title = `${currentTrack?.title || 'Now Playing'} • Seeder`;
 
       win.addEventListener('pagehide', () => {
         setPipWindow(null);
@@ -213,8 +258,10 @@ export const MiniPlayerPopup: React.FC<MiniPlayerPopupProps> = ({
       });
 
       setPipWindow(win);
+      setShowInAppPopup(false);
     } catch (err) {
-      console.warn('Could not open Document PiP window:', err);
+      console.warn('Could not open Document PiP window, falling back to in-app popup:', err);
+      setShowInAppPopup(true);
     } finally {
       isOpeningRef.current = false;
     }
@@ -233,27 +280,26 @@ export const MiniPlayerPopup: React.FC<MiniPlayerPopupProps> = ({
     }
   }, []);
 
-  // Expose toggle globally or via custom event
+  // Expose toggle globally for the player bar PiP button
   useEffect(() => {
     const handleToggleEvent = () => {
       if (pipWindowRef.current && !pipWindowRef.current.closed) {
         closeMiniPlayer();
-      } else {
-        openMiniPlayer();
+        return;
       }
+      setShowInAppPopup((prev) => !prev);
     };
     window.addEventListener('seeder-toggle-mini-player', handleToggleEvent);
     return () => {
       window.removeEventListener('seeder-toggle-mini-player', handleToggleEvent);
     };
-  }, [openMiniPlayer, closeMiniPlayer]);
+  }, [closeMiniPlayer]);
 
   // Keep media playback active when tab is minimized or switched
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        // App is minimized or switched to another tab
-        if (isPlaying && ('mediaSession' in navigator)) {
+        if (isPlaying && 'mediaSession' in navigator) {
           try {
             navigator.mediaSession.playbackState = 'playing';
           } catch (e) {}
@@ -267,145 +313,55 @@ export const MiniPlayerPopup: React.FC<MiniPlayerPopupProps> = ({
     };
   }, [isPlaying]);
 
-  // Sync navigator.mediaSession for native OS media popover
+  // mediaSession is managed centrally by PlayerTestPanel for background audio resiliency
+
+  // Draggable logic for in-app popup
+  const handleDragStart = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('button')) return;
+    isDraggingRef.current = true;
+    dragStartRef.current = {
+      mouseX: e.clientX,
+      mouseY: e.clientY,
+      startX: position.x,
+      startY: position.y,
+    };
+  };
+
   useEffect(() => {
-    if (!('mediaSession' in navigator) || !currentTrack) return;
-
-    try {
-      navigator.mediaSession.metadata = new window.MediaMetadata({
-        title: currentTrack.title,
-        artist: currentTrack.artist,
-        album: currentTrack.album || 'Seeder Play',
-        artwork: currentTrack.thumbnailUrl
-          ? [
-              { src: currentTrack.thumbnailUrl, sizes: '96x96', type: 'image/jpeg' },
-              { src: currentTrack.thumbnailUrl, sizes: '128x128', type: 'image/jpeg' },
-              { src: currentTrack.thumbnailUrl, sizes: '256x256', type: 'image/jpeg' },
-              { src: currentTrack.thumbnailUrl, sizes: '512x512', type: 'image/jpeg' },
-            ]
-          : [],
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDraggingRef.current) return;
+      const dx = e.clientX - dragStartRef.current.mouseX;
+      const dy = e.clientY - dragStartRef.current.mouseY;
+      setPosition({
+        x: dragStartRef.current.startX + dx,
+        y: dragStartRef.current.startY + dy,
       });
+    };
 
-      navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+    const handleMouseUp = () => {
+      isDraggingRef.current = false;
+    };
 
-      navigator.mediaSession.setActionHandler('play', onTogglePlay);
-      navigator.mediaSession.setActionHandler('pause', onTogglePlay);
-      navigator.mediaSession.setActionHandler('previoustrack', onPrevTrack);
-      navigator.mediaSession.setActionHandler('nexttrack', onNextTrack);
-      navigator.mediaSession.setActionHandler('seekto', (details) => {
-        if (details.seekTime !== undefined) {
-          onSeek(details.seekTime);
-        }
-      });
-    } catch (err) {
-      console.warn('MediaSession registration error:', err);
-    }
-  }, [currentTrack, isPlaying, onTogglePlay, onPrevTrack, onNextTrack, onSeek]);
-
-  const effectiveDuration = duration > 0 ? duration : currentTrack?.durationSeconds || 180;
-  const progressPercent = effectiveDuration > 0 ? (currentTime / effectiveDuration) * 100 : 0;
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []);
 
   return (
     <>
-      {/* Native Picture-in-Picture Window Portal */}
-      {pipWindow && !pipWindow.closed && currentTrack &&
+      {/* Native Picture-in-Picture Window Portal (When OS PiP is active) */}
+      {pipWindow &&
+        !pipWindow.closed &&
+        currentTrack &&
         createPortal(
           <div className="pip-mini-root" role="dialog" aria-label="Mini Music Player">
-            <div className="pip-main-row">
-              {/* Artwork */}
-              <div className="pip-art-wrap">
-                <img
-                  src={currentTrack.thumbnailUrl || FALLBACK_POPUP_ART}
-                  alt={currentTrack.title}
-                  className="pip-art-img"
-                  referrerPolicy="no-referrer"
-                  crossOrigin="anonymous"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = FALLBACK_POPUP_ART;
-                  }}
-                />
-              </div>
-
-              {/* Metadata */}
-              <div className="pip-track-meta">
-                <div className="pip-track-title" title={currentTrack.title}>
-                  {currentTrack.title}
-                </div>
-                <div className="pip-track-artist" title={currentTrack.artist}>
-                  {currentTrack.artist}
-                </div>
-              </div>
-
-              {/* Playback Controls */}
-              <div className="pip-controls">
-                <button
-                  type="button"
-                  className="pip-ctrl-btn"
-                  onClick={onPrevTrack}
-                  title="Previous"
-                  aria-label="Previous track"
-                >
-                  <SkipBack size={15} />
-                </button>
-
-                <button
-                  type="button"
-                  className="pip-play-btn"
-                  onClick={onTogglePlay}
-                  title={isPlaying ? 'Pause' : 'Play'}
-                  aria-label={isPlaying ? 'Pause' : 'Play'}
-                >
-                  {isPlaying ? (
-                    <Pause size={17} fill="#120e0a" color="#120e0a" />
-                  ) : (
-                    <Play size={17} fill="#120e0a" color="#120e0a" style={{ marginLeft: 2 }} />
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  className="pip-ctrl-btn"
-                  onClick={onNextTrack}
-                  title="Next"
-                  aria-label="Next track"
-                >
-                  <SkipForward size={15} />
-                </button>
-              </div>
+            <div className="pip-header">
+              <span>Now Playing</span>
             </div>
 
-            {/* Progress Bar Line */}
-            <div
-              className="pip-progress-row"
-              onClick={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect();
-                const clickPos = (e.clientX - rect.left) / rect.width;
-                const targetTime = clickPos * effectiveDuration;
-                onSeek(targetTime);
-              }}
-              title="Seek"
-            >
-              <div className="pip-progress-bar" style={{ width: `${progressPercent}%` }} />
-            </div>
-          </div>,
-          pipWindow.document.body
-        )}
-
-      {/* Floating In-App Mini Pop-up (Visible when floating is enabled) */}
-      {showInAppPopup && (!pipWindow || pipWindow.closed) && currentTrack && (
-        <div className="floating-mini-player-toast" role="dialog" aria-label="Mini Music Player">
-          <div className="floating-pip-header">
-            <span className="floating-pip-badge">Now Playing</span>
-            <button
-              type="button"
-              className="floating-pip-close-btn"
-              onClick={() => setShowInAppPopup(false)}
-              aria-label="Close popup"
-            >
-              ✕
-            </button>
-          </div>
-          <div className="pip-main-row">
             <div className="pip-art-wrap">
               <img
                 src={currentTrack.thumbnailUrl || FALLBACK_POPUP_ART}
@@ -418,14 +374,46 @@ export const MiniPlayerPopup: React.FC<MiniPlayerPopupProps> = ({
                 }}
               />
             </div>
-            <div className="pip-track-meta">
-              <div className="pip-track-title" title={currentTrack.title}>
-                {currentTrack.title}
+
+            <div className="pip-meta-row">
+              <div className="pip-titles">
+                <div className="pip-title" title={currentTrack.title}>
+                  {currentTrack.title}
+                </div>
+                <div className="pip-artist" title={currentTrack.artist}>
+                  {currentTrack.artist}
+                </div>
               </div>
-              <div className="pip-track-artist" title={currentTrack.artist}>
-                {currentTrack.artist}
-              </div>
+
+              <button
+                type="button"
+                className="pip-check-badge"
+                onClick={() => onToggleLike?.(currentTrack)}
+                title={isLiked ? 'Saved' : 'Save'}
+              >
+                {isLiked ? (
+                  <Check size={16} strokeWidth={3} color="#05240c" />
+                ) : (
+                  <Plus size={16} strokeWidth={2.5} color="#05240c" />
+                )}
+              </button>
             </div>
+
+            <div className="pip-progress-row">
+              <span className="pip-time">{formatTime(currentTime)}</span>
+              <div
+                className="pip-progress-track"
+                onClick={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const clickPos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                  onSeek(clickPos * effectiveDuration);
+                }}
+              >
+                <div className="pip-progress-fill" style={{ width: `${progressPercent}%` }} />
+              </div>
+              <span className="pip-time">{formatTime(effectiveDuration)}</span>
+            </div>
+
             <div className="pip-controls">
               <button
                 type="button"
@@ -433,7 +421,7 @@ export const MiniPlayerPopup: React.FC<MiniPlayerPopupProps> = ({
                 onClick={onPrevTrack}
                 title="Previous track"
               >
-                <SkipBack size={15} />
+                <SkipBack size={16} />
               </button>
               <button
                 type="button"
@@ -442,9 +430,9 @@ export const MiniPlayerPopup: React.FC<MiniPlayerPopupProps> = ({
                 title={isPlaying ? 'Pause' : 'Play'}
               >
                 {isPlaying ? (
-                  <Pause size={17} fill="#120e0a" color="#120e0a" />
+                  <Pause size={18} fill="#05240c" color="#05240c" />
                 ) : (
-                  <Play size={17} fill="#120e0a" color="#120e0a" style={{ marginLeft: 2 }} />
+                  <Play size={18} fill="#05240c" color="#05240c" style={{ marginLeft: 2 }} />
                 )}
               </button>
               <button
@@ -453,19 +441,190 @@ export const MiniPlayerPopup: React.FC<MiniPlayerPopupProps> = ({
                 onClick={onNextTrack}
                 title="Next track"
               >
-                <SkipForward size={15} />
+                <SkipForward size={16} />
+              </button>
+            </div>
+          </div>,
+          pipWindow.document.body
+        )}
+
+      {/* Floating In-App Mini Pop-up Window (Matching Image 3 specification) */}
+      {showInAppPopup && (!pipWindow || pipWindow.closed) && currentTrack && (
+        <div
+          className="spotify-pip-modal-card"
+          role="dialog"
+          aria-label="Mini Music Player"
+          style={{
+            transform: `translate(${position.x}px, ${position.y}px)`,
+          }}
+        >
+          {/* Top Header Bar matching Image 3 */}
+          <div className="spotify-pip-header-bar" onMouseDown={handleDragStart}>
+            <div className="spotify-pip-header-left">
+              <span className="spotify-pip-header-domain">Now Playing</span>
+            </div>
+
+            <div className="spotify-pip-header-actions">
+              {/* Optional: pop out to native OS window if supported */}
+              {'documentPictureInPicture' in window && (
+                <button
+                  type="button"
+                  className="spotify-pip-header-btn"
+                  onClick={openMiniPlayer}
+                  title="Detach into floating OS window"
+                  aria-label="Detach window"
+                >
+                  <ExternalLink size={13} />
+                </button>
+              )}
+
+              {onOpenExpanded && (
+                <button
+                  type="button"
+                  className="spotify-pip-header-btn"
+                  onClick={() => {
+                    setShowInAppPopup(false);
+                    onOpenExpanded();
+                  }}
+                  title="Expand to Full Player"
+                  aria-label="Expand player"
+                >
+                  <Maximize2 size={13} />
+                </button>
+              )}
+
+              <button
+                type="button"
+                className="spotify-pip-header-btn close"
+                onClick={() => setShowInAppPopup(false)}
+                title="Close mini player"
+                aria-label="Close mini player"
+              >
+                <X size={14} />
               </button>
             </div>
           </div>
-          <div
-            className="pip-progress-row"
-            onClick={(e) => {
-              const rect = e.currentTarget.getBoundingClientRect();
-              const clickPos = (e.clientX - rect.left) / rect.width;
-              onSeek(clickPos * effectiveDuration);
-            }}
-          >
-            <div className="pip-progress-bar" style={{ width: `${progressPercent}%` }} />
+
+          {/* Main Card Content */}
+          <div className="spotify-pip-card-body">
+            {/* Large Album Artwork matching Image 3 */}
+            <div className="spotify-pip-art-wrap">
+              <img
+                src={currentTrack.thumbnailUrl || FALLBACK_POPUP_ART}
+                alt={currentTrack.title}
+                className="spotify-pip-art-img"
+                referrerPolicy="no-referrer"
+                crossOrigin="anonymous"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = FALLBACK_POPUP_ART;
+                }}
+              />
+            </div>
+
+            {/* Track Info & Spotify-Style Green Checkmark Badge matching Image 3 */}
+            <div className="spotify-pip-meta-row">
+              <div className="spotify-pip-titles">
+                <h3 className="spotify-pip-title" title={currentTrack.title}>
+                  {currentTrack.title}
+                </h3>
+                <p className="spotify-pip-artist" title={currentTrack.artist}>
+                  {currentTrack.artist}
+                </p>
+              </div>
+
+              {/* Green round checkmark button matching Image 3 */}
+              <button
+                type="button"
+                className={`spotify-pip-check-badge ${isLiked ? 'is-liked' : ''}`}
+                onClick={() => onToggleLike?.(currentTrack)}
+                title={isLiked ? 'Saved to Your Library' : 'Save to Your Library'}
+                aria-label={isLiked ? 'Saved to Your Library' : 'Save to Your Library'}
+              >
+                {isLiked ? (
+                  <Check size={16} strokeWidth={3} color="#05240c" />
+                ) : (
+                  <Plus size={16} strokeWidth={2.5} color="#ffffff" />
+                )}
+              </button>
+            </div>
+
+            {/* Mini Progress Scrubber */}
+            <div className="spotify-pip-progress-row">
+              <span className="spotify-pip-time">{formatTime(currentTime)}</span>
+              <div
+                className="spotify-pip-progress-track"
+                onClick={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const clickPos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                  onSeek(clickPos * effectiveDuration);
+                }}
+                title="Seek"
+              >
+                <div
+                  className="spotify-pip-progress-fill"
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+              <span className="spotify-pip-time">{formatTime(effectiveDuration)}</span>
+            </div>
+
+            {/* Playback Controls */}
+            <div className="spotify-pip-controls-row">
+              <button
+                type="button"
+                className="spotify-pip-ctrl-btn"
+                onClick={onPrevTrack}
+                title="Previous track"
+              >
+                <SkipBack size={17} />
+              </button>
+
+              <button
+                type="button"
+                className="spotify-pip-play-btn"
+                onClick={onTogglePlay}
+                title={isPlaying ? 'Pause' : 'Play'}
+              >
+                {isPlaying ? (
+                  <Pause size={19} fill="#05240c" color="#05240c" />
+                ) : (
+                  <Play size={19} fill="#05240c" color="#05240c" style={{ marginLeft: 2 }} />
+                )}
+              </button>
+
+              <button
+                type="button"
+                className="spotify-pip-ctrl-btn"
+                onClick={onNextTrack}
+                title="Next track"
+              >
+                <SkipForward size={17} />
+              </button>
+            </div>
+
+            {/* Resize Grip Handle matching Image 3 bottom right */}
+            <div className="spotify-pip-resize-grip" title="Resize handle">
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                <line
+                  x1="9"
+                  y1="1"
+                  x2="1"
+                  y2="9"
+                  stroke="rgba(255,255,255,0.22)"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+                <line
+                  x1="9"
+                  y1="5"
+                  x2="5"
+                  y2="9"
+                  stroke="rgba(255,255,255,0.22)"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </div>
           </div>
         </div>
       )}

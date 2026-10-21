@@ -80,4 +80,35 @@ class StorageService {
     list.insert(0, newPlaylist);
     await savePlaylists(list);
   }
+
+  // Cross-Device Continuous Playback & Cloud Sync
+  static const String _playbackSessionKey = 'seeder_playback_session';
+  static const String _userIdKey = 'seeder_auth_user_id';
+
+  Future<String?> getUserId() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_userIdKey);
+  }
+
+  Future<void> saveUserId(String userId) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_userIdKey, userId);
+  }
+
+  Future<Map<String, dynamic>?> getPlaybackSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_playbackSessionKey);
+    if (raw == null) return null;
+    try {
+      return jsonDecode(raw) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> savePlaybackSession(Map<String, dynamic> session) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_playbackSessionKey, jsonEncode(session));
+  }
 }
+

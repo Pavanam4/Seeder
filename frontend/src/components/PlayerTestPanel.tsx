@@ -35,6 +35,7 @@ import {
 import { fetchSyncedLyrics, type LyricLine } from '../services/lyrics';
 import { searchTracks } from '../services/api';
 import { MusicQualityMenu, getQualityLabel } from './MusicQualityMenu';
+import { mobileBackgroundPlay } from '../services/mobileBackgroundPlay';
 
 declare global {
   interface Window {
@@ -46,6 +47,7 @@ declare global {
 export interface PlayerHandle {
   play: () => void;
   pause: () => void;
+  stop: () => void;
   seek: (seconds: number) => void;
   setVolume: (vol: number) => void;
   toggleMute: (muted: boolean) => void;
@@ -84,6 +86,7 @@ interface PlayerTestPanelProps {
   onPlayTrack?: (track: MusicTrack) => void;
   onTrackResolved?: (track: MusicTrack) => void;
   audioNormalization?: AudioNormalizationMode;
+  initialStartTime?: number;
 }
 
 export const PlayerTestPanel = forwardRef<PlayerHandle, PlayerTestPanelProps>(
@@ -119,12 +122,14 @@ export const PlayerTestPanel = forwardRef<PlayerHandle, PlayerTestPanelProps>(
       onPlayTrack,
       onTrackResolved,
       audioNormalization = 'balanced',
+      initialStartTime,
     },
     ref
   ) => {
     const internalPlayerRef = useRef<any>(null);
     const progressTimerRef = useRef<number | null>(null);
     const lastLoadedVideoIdRef = useRef<string | null>(null);
+    const initialSeekAppliedRef = useRef<boolean>(false);
 
     // Dynamic stream resolver for tracks with browse/playlist IDs or non-embeddable flags
     const [resolvedVideoId, setResolvedVideoId] = useState<string | null>(null);
@@ -264,34 +269,18 @@ export const PlayerTestPanel = forwardRef<PlayerHandle, PlayerTestPanelProps>(
       applyLockedVolume();
     }, [volume, isMuted, audioNormalization, applyLockedVolume]);
 
-    // Mobile Audio Session & Silent Keep-Alive loop to prevent browser throttling/kill
-    const silentAudioRef = useRef<HTMLAudioElement | null>(null);
-
-    // Initialize iOS and Mobile Audio Session
+    // Maintain continuous background audio privilege & WakeLock
     useEffect(() => {
-      try {
-        if ('audioSession' in navigator) {
-          (navigator as any).audioSession.type = 'playback';
-        }
-      } catch (e) {}
-    }, []);
-
-    // Maintain continuous background audio privilege
-    useEffect(() => {
-      if (!silentAudioRef.current) {
-        // Continuous, inaudible 1-second silent WAV loop
-        const audio = new Audio(
-          'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAP8A/w=='
-        );
-        audio.loop = true;
-        audio.volume = 0.001;
-        silentAudioRef.current = audio;
-      }
-
       if (isPlaying) {
-        silentAudioRef.current.play().catch(() => {});
+        mobileBackgroundPlay.startKeepAlive(() => {
+          if (isPlayingRef.current && !userInitiatedPauseRef.current) {
+            try {
+              internalPlayerRef.current?.playVideo?.();
+            } catch (e) {}
+          }
+        });
       } else {
-        silentAudioRef.current.pause();
+        mobileBackgroundPlay.stopKeepAlive();
       }
     }, [isPlaying]);
 
@@ -317,7 +306,13 @@ export const PlayerTestPanel = forwardRef<PlayerHandle, PlayerTestPanelProps>(
 
         navigator.mediaSession.setActionHandler('play', () => {
           userInitiatedPauseRef.current = false;
-          silentAudioRef.current?.play()?.catch(() => {});
+          mobileBackgroundPlay.startKeepAlive(() => {
+            if (isPlayingRef.current && !userInitiatedPauseRef.current) {
+              try {
+                internalPlayerRef.current?.playVideo?.();
+              } catch (e) {}
+            }
+          });
           try {
             internalPlayerRef.current?.playVideo?.();
           } catch (e) {}
@@ -328,7 +323,7 @@ export const PlayerTestPanel = forwardRef<PlayerHandle, PlayerTestPanelProps>(
 
         navigator.mediaSession.setActionHandler('pause', () => {
           userInitiatedPauseRef.current = true;
-          silentAudioRef.current?.pause();
+          mobileBackgroundPlay.stopKeepAlive();
           try {
             internalPlayerRef.current?.pauseVideo?.();
           } catch (e) {}
@@ -353,10 +348,39 @@ export const PlayerTestPanel = forwardRef<PlayerHandle, PlayerTestPanelProps>(
             } catch (e) {}
           }
         });
+
+        navigator.mediaSession.setActionHandler('seekbackward', (details) => {
+          const skip = details.seekOffset || 10;
+          const target = Math.max(0, currentTime - skip);
+          onSeek(target);
+          try {
+            internalPlayerRef.current?.seekTo?.(target, true);
+          } catch (e) {}
+        });
+
+        navigator.mediaSession.setActionHandler('seekforward', (details) => {
+          const skip = details.seekOffset || 10;
+          const target = Math.min(duration, currentTime + skip);
+          onSeek(target);
+          try {
+            internalPlayerRef.current?.seekTo?.(target, true);
+          } catch (e) {}
+        });
+
+        navigator.mediaSession.setActionHandler('stop', () => {
+          userInitiatedPauseRef.current = true;
+          mobileBackgroundPlay.stopKeepAlive();
+          try {
+            internalPlayerRef.current?.pauseVideo?.();
+          } catch (e) {}
+          if (isPlayingRef.current) {
+            onTogglePlay();
+          }
+        });
       } catch (err) {
         console.warn('MediaSession registration error:', err);
       }
-    }, [selectedTrack, isPlaying, onTogglePlay, onPrevTrack, onNextTrack, onSeek]);
+    }, [selectedTrack, isPlaying, currentTime, duration, onTogglePlay, onPrevTrack, onNextTrack, onSeek]);
 
     // Update MediaSession playback position
     useEffect(() => {
@@ -376,7 +400,13 @@ export const PlayerTestPanel = forwardRef<PlayerHandle, PlayerTestPanelProps>(
       const keepPlayingOnBackground = () => {
         if (isPlayingRef.current && !userInitiatedPauseRef.current) {
           // Keep audio session alive on Android/iOS
-          silentAudioRef.current?.play()?.catch(() => {});
+          mobileBackgroundPlay.startKeepAlive(() => {
+            if (isPlayingRef.current && !userInitiatedPauseRef.current) {
+              try {
+                internalPlayerRef.current?.playVideo?.();
+              } catch (e) {}
+            }
+          });
           if ('mediaSession' in navigator) {
             navigator.mediaSession.playbackState = 'playing';
           }
@@ -711,6 +741,10 @@ export const PlayerTestPanel = forwardRef<PlayerHandle, PlayerTestPanelProps>(
           videoId: trackId,
           playerVars: {
             autoplay: 1,
+            start:
+              initialStartTime && initialStartTime > 0 && !initialSeekAppliedRef.current
+                ? Math.floor(initialStartTime)
+                : undefined,
             controls: 0, // Strips YouTube control bar completely
             modestbranding: 1,
             rel: 0,
@@ -731,6 +765,10 @@ export const PlayerTestPanel = forwardRef<PlayerHandle, PlayerTestPanelProps>(
                   event.target.unMute();
                   event.target.setVolume(volumeRef.current);
                 }
+                if (initialStartTime && initialStartTime > 0 && !initialSeekAppliedRef.current) {
+                  initialSeekAppliedRef.current = true;
+                  event.target.seekTo(initialStartTime, true);
+                }
                 event.target.playVideo();
               } catch (e) {
                 console.warn('Autoplay error:', e);
@@ -743,8 +781,17 @@ export const PlayerTestPanel = forwardRef<PlayerHandle, PlayerTestPanelProps>(
       } else {
         try {
           if (typeof internalPlayerRef.current.loadVideoById === 'function') {
+            const startSec =
+              initialStartTime && initialStartTime > 0 && !initialSeekAppliedRef.current
+                ? Math.floor(initialStartTime)
+                : 0;
+            if (startSec > 0) {
+              initialSeekAppliedRef.current = true;
+            }
+
             internalPlayerRef.current.loadVideoById({
               videoId: trackId,
+              startSeconds: startSec,
               suggestedQuality: quality || 'highres',
             });
             applyLockedVolume();
@@ -754,7 +801,7 @@ export const PlayerTestPanel = forwardRef<PlayerHandle, PlayerTestPanelProps>(
           console.warn('Video switch error:', e);
         }
       }
-    }, [isApiReady, resolvedVideoId, quality, handleStateChange, handleError, applyLockedVolume]);
+    }, [isApiReady, resolvedVideoId, quality, handleStateChange, handleError, applyLockedVolume, initialStartTime]);
 
     // Interval to poll current playback time & enforce locked volume
     useEffect(() => {
@@ -809,6 +856,21 @@ export const PlayerTestPanel = forwardRef<PlayerHandle, PlayerTestPanelProps>(
       }
     }, [volume, isMuted]);
 
+    // Automatically stop playback if selected track is cleared (e.g. logout)
+    useEffect(() => {
+      if (!selectedTrack) {
+        userInitiatedPauseRef.current = true;
+        silentAudioRef.current?.pause();
+        try {
+          internalPlayerRef.current?.stopVideo?.();
+          internalPlayerRef.current?.pauseVideo?.();
+          lastLoadedVideoIdRef.current = null;
+        } catch (e) {
+          console.warn('Track reset stop error:', e);
+        }
+      }
+    }, [selectedTrack]);
+
     // Forward player commands to parent components
     useImperativeHandle(
       ref,
@@ -829,6 +891,17 @@ export const PlayerTestPanel = forwardRef<PlayerHandle, PlayerTestPanelProps>(
             internalPlayerRef.current?.pauseVideo?.();
           } catch (e) {
             console.warn('Pause error:', e);
+          }
+        },
+        stop: () => {
+          userInitiatedPauseRef.current = true;
+          silentAudioRef.current?.pause();
+          try {
+            internalPlayerRef.current?.stopVideo?.();
+            internalPlayerRef.current?.pauseVideo?.();
+            lastLoadedVideoIdRef.current = null;
+          } catch (e) {
+            console.warn('Stop error:', e);
           }
         },
         seek: (seconds: number) => {

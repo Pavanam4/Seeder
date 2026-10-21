@@ -15,6 +15,9 @@ import {
   Share2,
   ExternalLink,
   X,
+  Pin,
+  Pencil,
+  Check,
 } from 'lucide-react';
 import type { Playlist, MusicTrack } from '../types';
 
@@ -31,6 +34,9 @@ interface PlaylistViewProps {
   onOpenAddToPlaylist: (track: MusicTrack) => void;
   onPlayNext?: (track: MusicTrack) => void;
   onAddToQueue?: (track: MusicTrack) => void;
+  isPinned?: boolean;
+  onTogglePin?: (playlistId: string) => void;
+  onRenamePlaylist?: (playlistId: string, newName: string) => void;
 }
 
 export const PlaylistView: React.FC<PlaylistViewProps> = ({
@@ -46,22 +52,58 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
   onOpenAddToPlaylist,
   onPlayNext,
   onAddToQueue,
+  isPinned,
+  onTogglePin,
+  onRenamePlaylist,
 }) => {
   const [filterText, setFilterText] = useState('');
   const [openMenuTrackId, setOpenMenuTrackId] = useState<string | null>(null);
+  const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState(playlist.name);
+  const renameInputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const actionMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setRenameValue(playlist.name);
+    setIsRenaming(false);
+  }, [playlist.id, playlist.name]);
+
+  useEffect(() => {
+    if (isRenaming) {
+      renameInputRef.current?.focus();
+      renameInputRef.current?.select();
+    }
+  }, [isRenaming]);
+
+  const handleSaveRename = () => {
+    const trimmed = renameValue.trim();
+    if (trimmed && trimmed !== playlist.name && onRenamePlaylist) {
+      onRenamePlaylist(playlist.id, trimmed);
+    }
+    setIsRenaming(false);
+  };
+
+  const handleCancelRename = () => {
+    setRenameValue(playlist.name);
+    setIsRenaming(false);
+  };
 
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setOpenMenuTrackId(null);
       }
+      if (actionMenuRef.current && !actionMenuRef.current.contains(e.target as Node)) {
+        setIsActionMenuOpen(false);
+      }
     };
-    if (openMenuTrackId) {
+    if (openMenuTrackId || isActionMenuOpen) {
       document.addEventListener('mousedown', handleOutsideClick);
     }
     return () => document.removeEventListener('mousedown', handleOutsideClick);
-  }, [openMenuTrackId]);
+  }, [openMenuTrackId, isActionMenuOpen]);
 
   const isLikedView = playlist.id === 'playlist-liked-songs' || playlist.name === 'Liked Songs';
 
@@ -105,7 +147,70 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
           <span className="playlist-badge">
             {isLikedView ? 'CURATED COLLECTION' : playlist.isCustom ? 'CUSTOM PLAYLIST' : 'CURATED MIX'}
           </span>
-          <h1 className="playlist-hero-title">{playlist.name}</h1>
+          {isRenaming ? (
+            <div className="playlist-hero-rename-row">
+              <input
+                ref={renameInputRef}
+                type="text"
+                className="playlist-hero-rename-input"
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                onKeyDown={(e) => {
+                  e.stopPropagation();
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleSaveRename();
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    handleCancelRename();
+                  }
+                }}
+                maxLength={80}
+              />
+              <button
+                type="button"
+                className="playlist-hero-rename-save-btn"
+                onClick={handleSaveRename}
+                title="Save name"
+              >
+                <Check size={18} />
+                <span>Save</span>
+              </button>
+              <button
+                type="button"
+                className="playlist-hero-rename-cancel-btn"
+                onClick={handleCancelRename}
+                title="Cancel"
+              >
+                <X size={18} />
+              </button>
+            </div>
+          ) : (
+            <div className="playlist-hero-title-row">
+              <h1
+                className={`playlist-hero-title ${playlist.isCustom ? 'is-editable' : ''}`}
+                onClick={() => {
+                  if (playlist.isCustom && onRenamePlaylist) {
+                    setIsRenaming(true);
+                  }
+                }}
+                title={playlist.isCustom ? 'Click to rename playlist' : undefined}
+              >
+                {playlist.name}
+              </h1>
+              {playlist.isCustom && onRenamePlaylist && (
+                <button
+                  type="button"
+                  className="playlist-hero-title-edit-btn"
+                  onClick={() => setIsRenaming(true)}
+                  title="Rename playlist"
+                  aria-label="Rename playlist"
+                >
+                  <Pencil size={18} />
+                </button>
+              )}
+            </div>
+          )}
           {playlist.description && (
             <p className="playlist-hero-desc">{playlist.description}</p>
           )}
@@ -145,31 +250,76 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
             )}
           </button>
 
-          {playlist.isCustom && (
+          {/* 3-Dots Action Menu */}
+          <div className="playlist-more-menu-wrap" ref={actionMenuRef}>
             <button
               type="button"
-              className="playlist-delete-btn"
-              onClick={() => {
-                if (window.confirm(`Are you sure you want to delete "${playlist.name}"?`)) {
-                  onDeletePlaylist(playlist.id);
-                }
-              }}
-              title="Delete this playlist"
+              className="playlist-action-dots-btn"
+              onClick={() => setIsActionMenuOpen(!isActionMenuOpen)}
+              title="More options"
+              aria-label="More options"
             >
-              <Trash2 size={17} />
-              <span>Delete</span>
+              <MoreHorizontal size={22} />
             </button>
-          )}
+
+            {isActionMenuOpen && (
+              <div className="playlist-dots-dropdown">
+                {onTogglePin && (
+                  <button
+                    type="button"
+                    className="playlist-dropdown-item"
+                    onClick={() => {
+                      onTogglePin(playlist.id);
+                      setIsActionMenuOpen(false);
+                    }}
+                  >
+                    <Pin size={15} />
+                    <span>{isPinned ? 'Unpin from top' : 'Pin to top of Library'}</span>
+                  </button>
+                )}
+
+                {playlist.isCustom && onRenamePlaylist && (
+                  <button
+                    type="button"
+                    className="playlist-dropdown-item"
+                    onClick={() => {
+                      setIsActionMenuOpen(false);
+                      setIsRenaming(true);
+                    }}
+                  >
+                    <Pencil size={15} />
+                    <span>Rename playlist</span>
+                  </button>
+                )}
+
+                {playlist.isCustom && (
+                  <button
+                    type="button"
+                    className="playlist-dropdown-item is-danger"
+                    onClick={() => {
+                      setIsActionMenuOpen(false);
+                      if (window.confirm(`Are you sure you want to delete "${playlist.name}"?`)) {
+                        onDeletePlaylist(playlist.id);
+                      }
+                    }}
+                  >
+                    <Trash2 size={15} />
+                    <span>Delete playlist</span>
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Filter within playlist */}
+        {/* Filter within playlist (Prominent and larger search) */}
         {playlist.tracks.length > 0 && (
-          <div className="playlist-filter-wrap">
-            <Search size={15} className="playlist-filter-icon" />
+          <div className="playlist-filter-wrap is-prominent">
+            <Search size={18} className="playlist-filter-icon" />
             <input
               type="text"
               className="playlist-filter-input"
-              placeholder={isLikedView ? "Filter liked songs..." : "Filter in playlist..."}
+              placeholder={isLikedView ? "Search in liked songs..." : "Search in playlist..."}
               value={filterText}
               onChange={(e) => setFilterText(e.target.value)}
             />
@@ -185,7 +335,7 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
                 onClick={() => setFilterText('')}
                 aria-label="Clear filter"
               >
-                <X size={13} />
+                <X size={15} />
               </button>
             )}
           </div>

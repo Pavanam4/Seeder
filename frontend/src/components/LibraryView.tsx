@@ -9,6 +9,9 @@ import {
   Pin,
   ListMusic,
   Sparkles,
+  Link2,
+  Trash2,
+  MoreVertical,
 } from 'lucide-react';
 import type { Playlist, MusicTrack } from '../types';
 
@@ -20,9 +23,12 @@ interface LibraryViewProps {
   onPlayPlaylist: (playlist: Playlist, startIndex?: number) => void;
   onPlayTrack: (track: MusicTrack, queue?: MusicTrack[]) => void;
   onOpenCreateModal: () => void;
+  onOpenSpotifyImport?: () => void;
   onDeletePlaylist: (id: string) => void;
   currentTrackId?: string;
   isPlaying?: boolean;
+  pinnedPlaylistIds: Set<string>;
+  onTogglePinPlaylist: (id: string) => void;
 }
 
 export const LibraryView: React.FC<LibraryViewProps> = ({
@@ -32,20 +38,68 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   onOpenLiked,
   onPlayPlaylist,
   onOpenCreateModal,
+  onOpenSpotifyImport,
   onDeletePlaylist,
+  pinnedPlaylistIds,
+  onTogglePinPlaylist,
 }) => {
   const [filterQuery, setFilterQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<'all' | 'playlists' | 'liked'>('all');
+  const [contextMenu, setContextMenu] = useState<{
+    visible: boolean;
+    x: number;
+    y: number;
+    playlist: Playlist;
+  } | null>(null);
+
+  const contextMenuRef = React.useRef<HTMLDivElement>(null);
+
+  // Close context menu on global click
+  React.useEffect(() => {
+    const handleCloseMenu = () => setContextMenu(null);
+    if (contextMenu) {
+      window.addEventListener('click', handleCloseMenu);
+      window.addEventListener('scroll', handleCloseMenu, true);
+    }
+    return () => {
+      window.removeEventListener('click', handleCloseMenu);
+      window.removeEventListener('scroll', handleCloseMenu, true);
+    };
+  }, [contextMenu]);
+
+  const handlePlaylistContextMenu = (e: React.MouseEvent, pl: Playlist) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const x = Math.min(e.clientX, window.innerWidth - 200);
+    const y = Math.min(e.clientY, window.innerHeight - 150);
+    setContextMenu({ visible: true, x, y, playlist: pl });
+  };
+
+  // Sort playlists: Pinned first -> User created / imported on top -> System auto-mixes
+  const sortedPlaylists = useMemo(() => {
+    return [...playlists].sort((a, b) => {
+      const aPinned = pinnedPlaylistIds.has(a.id);
+      const bPinned = pinnedPlaylistIds.has(b.id);
+      if (aPinned && !bPinned) return -1;
+      if (!aPinned && bPinned) return 1;
+
+      // User created & imported playlists come before default auto-mixes
+      if (a.isCustom && !b.isCustom) return -1;
+      if (!a.isCustom && b.isCustom) return 1;
+
+      return 0;
+    });
+  }, [playlists, pinnedPlaylistIds]);
 
   const filteredPlaylists = useMemo(() => {
-    if (!filterQuery.trim()) return playlists;
+    if (!filterQuery.trim()) return sortedPlaylists;
     const q = filterQuery.toLowerCase().trim();
-    return playlists.filter(
+    return sortedPlaylists.filter(
       (p) =>
         p.name.toLowerCase().includes(q) ||
         (p.description && p.description.toLowerCase().includes(q))
     );
-  }, [playlists, filterQuery]);
+  }, [sortedPlaylists, filterQuery]);
 
   const showLikedCard =
     activeCategory === 'all' || activeCategory === 'liked';
@@ -77,16 +131,31 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           </div>
         </div>
 
-        <button
-          type="button"
-          className="library-new-playlist-btn"
-          onClick={onOpenCreateModal}
-          title="Create New Playlist"
-          aria-label="Create New Playlist"
-        >
-          <Plus size={18} />
-          <span>New Playlist</span>
-        </button>
+        <div className="library-header-actions">
+          {onOpenSpotifyImport && (
+            <button
+              type="button"
+              className="library-spotify-import-btn"
+              onClick={onOpenSpotifyImport}
+              title="Import Spotify playlist from link"
+              aria-label="Import Spotify"
+            >
+              <Link2 size={16} />
+              <span>Import Spotify</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            className="library-new-playlist-btn"
+            onClick={onOpenCreateModal}
+            title="Create New Playlist"
+            aria-label="Create New Playlist"
+          >
+            <Plus size={18} />
+            <span>New Playlist</span>
+          </button>
+        </div>
       </div>
 
       {/* Filter and Category Pills */}
@@ -196,15 +265,18 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           </div>
         )}
 
-        {/* User Playlists */}
+        {/* Playlists (Pinned & Custom on Top) */}
         {showPlaylists &&
           filteredPlaylists.map((pl) => {
             const hasCover = Boolean(pl.coverUrl);
+            const isPinned = pinnedPlaylistIds.has(pl.id);
+
             return (
               <div
                 key={pl.id}
-                className="library-collection-card"
+                className={`library-collection-card ${isPinned ? 'is-pinned-card' : ''}`}
                 onClick={() => onOpenPlaylist(pl.id)}
+                onContextMenu={(e) => handlePlaylistContextMenu(e, pl)}
                 role="button"
                 tabIndex={0}
               >
@@ -221,16 +293,37 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                       <ListMusic size={26} color="var(--accent-primary)" />
                     </div>
                   )}
+                  {isPinned && (
+                    <div className="lib-pin-tag" title="Pinned to top">
+                      <Pin size={11} />
+                    </div>
+                  )}
                 </div>
 
                 <div className="lib-card-info">
-                  <span className="lib-card-title">{pl.name}</span>
+                  <div className="lib-card-title-row">
+                    <span className="lib-card-title">{pl.name}</span>
+                    {isPinned && <span className="lib-pinned-badge">Pinned</span>}
+                  </div>
                   <p className="lib-card-meta">
-                    Playlist • {pl.tracks.length} {pl.tracks.length === 1 ? 'track' : 'tracks'}
+                    {pl.isCustom ? 'Custom Playlist' : 'Playlist'} • {pl.tracks.length} {pl.tracks.length === 1 ? 'track' : 'tracks'}
                   </p>
                 </div>
 
                 <div className="lib-card-actions" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    className={`lib-card-pin-btn ${isPinned ? 'is-pinned' : ''}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onTogglePinPlaylist(pl.id);
+                    }}
+                    title={isPinned ? 'Unpin from top' : 'Pin to top of Library'}
+                    aria-label="Pin playlist"
+                  >
+                    <Pin size={14} />
+                  </button>
+
                   <button
                     type="button"
                     className="lib-quick-play-btn"
@@ -285,6 +378,83 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* Right-click Floating Context Menu */}
+      {contextMenu && contextMenu.visible && (
+        <div
+          ref={contextMenuRef}
+          className="library-context-menu"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="lib-context-header">
+            <span className="lib-context-title">{contextMenu.playlist.name}</span>
+          </div>
+
+          <button
+            type="button"
+            className="lib-context-item"
+            onClick={() => {
+              onTogglePinPlaylist(contextMenu.playlist.id);
+              setContextMenu(null);
+            }}
+          >
+            <Pin size={14} className={pinnedPlaylistIds.has(contextMenu.playlist.id) ? 'is-pinned-icon' : ''} />
+            <span>
+              {pinnedPlaylistIds.has(contextMenu.playlist.id)
+                ? 'Unpin from top'
+                : 'Pin to top of Library'}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            className="lib-context-item"
+            onClick={() => {
+              onOpenPlaylist(contextMenu.playlist.id);
+              setContextMenu(null);
+            }}
+          >
+            <ListMusic size={14} />
+            <span>Open playlist</span>
+          </button>
+
+          <button
+            type="button"
+            className="lib-context-item"
+            onClick={() => {
+              if (contextMenu.playlist.tracks.length > 0) {
+                onPlayPlaylist(contextMenu.playlist, 0);
+              } else {
+                onOpenPlaylist(contextMenu.playlist.id);
+              }
+              setContextMenu(null);
+            }}
+          >
+            <Play size={14} fill="currentColor" />
+            <span>Play playlist</span>
+          </button>
+
+          {contextMenu.playlist.isCustom && (
+            <>
+              <div className="lib-context-divider" />
+              <button
+                type="button"
+                className="lib-context-item is-danger"
+                onClick={() => {
+                  if (confirm(`Delete playlist "${contextMenu.playlist.name}"?`)) {
+                    onDeletePlaylist(contextMenu.playlist.id);
+                  }
+                  setContextMenu(null);
+                }}
+              >
+                <Trash2 size={14} />
+                <span>Delete playlist</span>
+              </button>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 };

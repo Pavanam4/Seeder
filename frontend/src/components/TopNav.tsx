@@ -3,9 +3,9 @@ import {
   ChevronLeft,
   ChevronRight,
   User,
-  Settings,
+  LogIn,
 } from 'lucide-react';
-import type { ThemePalette, ViewType } from '../types';
+import type { ThemePalette, ViewType, UserProfile } from '../types';
 
 interface TopNavProps {
   currentView: ViewType;
@@ -16,6 +16,9 @@ interface TopNavProps {
   onGoForward?: () => void;
   canGoBack?: boolean;
   canGoForward?: boolean;
+  currentUser?: UserProfile | null;
+  onOpenAuthModal?: () => void;
+  onLogout?: () => void;
 }
 
 export const TopNav: React.FC<TopNavProps> = ({
@@ -25,6 +28,8 @@ export const TopNav: React.FC<TopNavProps> = ({
   onGoForward,
   canGoBack = false,
   canGoForward = false,
+  currentUser = null,
+  onOpenAuthModal,
 }) => {
   return (
     <header className="pro-top-nav">
@@ -34,12 +39,16 @@ export const TopNav: React.FC<TopNavProps> = ({
         <button
           type="button"
           className="top-nav-mobile-profile-btn"
-          onClick={onOpenSettings}
-          title="Profile & Settings"
+          onClick={currentView === 'settings' ? onGoBack : (currentUser ? onOpenSettings : onOpenAuthModal)}
+          title={currentUser ? `${currentUser.displayName} (Settings)` : 'Sign in'}
           aria-label="Profile and settings"
         >
           <div className="mobile-profile-avatar-circle">
-            <span>P</span>
+            {currentUser?.photoUrl ? (
+              <img src={currentUser.photoUrl} alt={currentUser.displayName} className="mobile-avatar-img" />
+            ) : (
+              <span>{currentUser ? currentUser.displayName.charAt(0).toUpperCase() : 'P'}</span>
+            )}
           </div>
         </button>
 
@@ -76,32 +85,41 @@ export const TopNav: React.FC<TopNavProps> = ({
         </span>
       </div>
 
-      {/* Right: Settings & User Profile */}
+      {/* Right: User Profile / Sign In */}
       <div className="top-nav-right-group">
-        {/* Dedicated Settings Button */}
-        <button
-          type="button"
-          className="top-nav-settings-btn"
-          onClick={onOpenSettings}
-          title="Settings & Audio Preferences"
-          aria-label="Settings"
-        >
-          <Settings size={16} />
-        </button>
-
-        {/* Minimalist Profile Avatar */}
-        <div
-          className="user-profile-badge"
-          onClick={onOpenSettings}
-          role="button"
-          tabIndex={0}
-          title="Active Profile & Settings"
-        >
-          <div className="avatar-circle">
-            <User size={15} />
+        {/* User Profile or Sign In Button */}
+        {currentUser ? (
+          <div
+            className="user-profile-badge is-logged-in"
+            onClick={onOpenSettings}
+            role="button"
+            tabIndex={0}
+            title={`${currentUser.displayName} (${currentUser.provider.toUpperCase()})`}
+          >
+            <div className="avatar-circle">
+              {currentUser.photoUrl ? (
+                <img
+                  src={currentUser.photoUrl}
+                  alt={currentUser.displayName}
+                  className="top-nav-avatar-img"
+                />
+              ) : (
+                <User size={15} />
+              )}
+            </div>
+            <span className="user-profile-name">{currentUser.displayName}</span>
           </div>
-          <span className="user-profile-name">Listener</span>
-        </div>
+        ) : (
+          <button
+            type="button"
+            className="top-nav-signin-pill"
+            onClick={onOpenAuthModal}
+            title="Sign in with Google or Phone"
+          >
+            <LogIn size={15} />
+            <span>Sign In</span>
+          </button>
+        )}
       </div>
     </header>
   );

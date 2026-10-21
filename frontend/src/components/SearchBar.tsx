@@ -565,7 +565,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 ) : (
                   <div className="palette-no-top-match">
                     <Music size={24} className="empty-glyph" />
-                    <span>Loading algorithmic music...</span>
+                    <span>Loading recommendations...</span>
                   </div>
                 )}
 
@@ -669,7 +669,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                   ) : (
                     <div className="palette-tracks-loading">
                       <div className="loading-spinner-dot" />
-                      <span>Curating algorithmic music for you...</span>
+                      <span>Curating music for you...</span>
                     </div>
                   )}
                 </div>

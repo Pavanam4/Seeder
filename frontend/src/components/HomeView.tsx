@@ -9,14 +9,16 @@ import {
   ChevronRight,
   Compass,
   Radio,
-  Video,
+  Sparkles,
   Loader2,
 } from 'lucide-react';
 import type { Playlist, MusicTrack, ThemePalette } from '../types';
 import { searchTracks } from '../services/api';
+import { filterMusicTracks } from '../services/autoMixes';
 
 interface HomeViewProps {
   playlists: Playlist[];
+  autoMixes?: Playlist[];
   likedTracks: MusicTrack[];
   recentTracks: MusicTrack[];
   newReleases: MusicTrack[];
@@ -38,23 +40,45 @@ interface HomeViewProps {
 }
 
 const FALLBACK_ARTWORK =
-  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 300'%3E%3Crect width='300' height='300' fill='%23161619'/%3E%3Cpath d='M150 110v80m0-40a20 20 0 1 1-40 0 20 20 0 0 1 40 0zm0 0v-20l40-10v30' fill='none' stroke='%23f59e0b' stroke-width='8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E";
+  'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=80';
+
+// High-End Shimmering Skeleton Card Loader for Home Shelves
+export const SkeletonMediaCard: React.FC = () => (
+  <div className="music-media-card skeleton-card" aria-hidden="true">
+    <div className="media-card-artwork skeleton-thumb skeleton-shimmer" />
+    <div className="media-card-meta">
+      <div className="skeleton-line skeleton-line-title skeleton-shimmer" />
+      <div className="skeleton-line skeleton-line-sub skeleton-shimmer" />
+    </div>
+  </div>
+);
+
+export const SkeletonRow: React.FC<{ count?: number }> = ({ count = 12 }) => (
+  <>
+    {Array.from({ length: count }).map((_, i) => (
+      <SkeletonMediaCard key={i} />
+    ))}
+  </>
+);
 
 const LANGUAGE_FILTERS = [
-  { id: 'all', name: 'All Music', mobileName: 'All', icon: '🌐' },
-  { id: 'music', name: 'Music Hits', mobileName: 'Music', icon: '🎵' },
-  { id: 'podcasts', name: 'Podcasts & Talk', mobileName: 'Podcasts', icon: '🎙️' },
-  { id: 'malayalam', name: 'Malayalam', mobileName: 'Malayalam', icon: '🌴' },
-  { id: 'tamil', name: 'Tamil', mobileName: 'Tamil', icon: '🔥' },
-  { id: 'hindi', name: 'Hindi', mobileName: 'Hindi', icon: '🇮🇳' },
-  { id: 'punjabi', name: 'Punjabi', mobileName: 'Punjabi', icon: '⚡' },
-  { id: 'english', name: 'Global Pop', mobileName: 'Global Pop', icon: '🎧' },
-  { id: 'synthwave', name: 'Synthwave', mobileName: 'Synthwave', icon: '🏎️' },
-  { id: 'lofi', name: 'Lo-Fi Chill', mobileName: 'Lo-Fi Chill', icon: '☕' },
+  { id: 'all', name: 'All Music', mobileName: 'All' },
+  { id: 'malayalam', name: 'Malayalam', mobileName: 'Malayalam' },
+  { id: 'tamil', name: 'Tamil', mobileName: 'Tamil' },
+  { id: 'hindi', name: 'Hindi', mobileName: 'Hindi' },
+  { id: 'telugu', name: 'Telugu', mobileName: 'Telugu' },
+  { id: 'punjabi', name: 'Punjabi', mobileName: 'Punjabi' },
+  { id: 'kannada', name: 'Kannada', mobileName: 'Kannada' },
+  { id: 'bengali', name: 'Bengali', mobileName: 'Bengali' },
+  { id: 'music', name: 'Music Hits', mobileName: 'Hits' },
+  { id: 'english', name: 'Global Pop', mobileName: 'Pop' },
+  { id: 'lofi', name: 'Lo-Fi Chill', mobileName: 'Lo-Fi' },
+  { id: 'podcasts', name: 'Podcasts & Talk', mobileName: 'Podcasts' },
 ];
 
 export const HomeView: React.FC<HomeViewProps> = ({
   playlists,
+  autoMixes = [],
   likedTracks,
   recentTracks,
   newReleases,
@@ -83,6 +107,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   };
 
   const getThemeTitle = () => {
+    if (theme === 'noir') return 'Midnight Pure Black Soundscape';
     if (theme === 'cyber') return 'Cyber & Synthwave Pulse';
     if (theme === 'amber') return 'Golden Hour & Soulful Warmth';
     return 'Aurora Chill & Indie Soundscape';
@@ -90,52 +115,54 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
   const selectedLangObj = LANGUAGE_FILTERS.find((l) => l.id === language) || LANGUAGE_FILTERS[0];
 
-  // Dynamic Scroll-to-Discover More Related Music Videos at Bottom of Home
-  const [moreVideos, setMoreVideos] = useState<MusicTrack[]>([]);
-  const [morePage, setMorePage] = useState<number>(1);
-  const [isLoadingMoreVideos, setIsLoadingMoreVideos] = useState<boolean>(false);
+  // Dynamic Scroll-to-Discover Algorithmic Tracks at Bottom of Home (Pure Music Only)
+  const [discoveryTracks, setDiscoveryTracks] = useState<MusicTrack[]>([]);
+  const [discoveryPage, setDiscoveryPage] = useState<number>(1);
+  const [isLoadingDiscovery, setIsLoadingDiscovery] = useState<boolean>(false);
   const bottomSentinelRef = useRef<HTMLDivElement>(null);
 
-  const fetchMoreHomeVideos = useCallback(async () => {
-    if (isLoadingMoreVideos) return;
-    setIsLoadingMoreVideos(true);
+  const fetchMoreDiscoveryTracks = useCallback(async () => {
+    if (isLoadingDiscovery) return;
+    setIsLoadingDiscovery(true);
     try {
       const q =
         language && language !== 'all'
-          ? `${language} songs official video`
-          : 'trending music videos hits';
-      const res = await searchTracks(q, morePage, 10, 'ytmusicapi', 'videos');
-      if (res.items.length > 0) {
-        setMoreVideos((prev) => {
+          ? `${language} songs top hits`
+          : 'trending top hits songs';
+      const res = await searchTracks(q, discoveryPage, 12, 'ytmusicapi', 'songs');
+      const clean = filterMusicTracks(res.items);
+      if (clean.length > 0) {
+        setDiscoveryTracks((prev) => {
           const map = new Map<string, MusicTrack>();
           prev.forEach((t) => map.set(t.id, t));
-          res.items.forEach((t) => map.set(t.id, t));
+          clean.forEach((t) => map.set(t.id, t));
           return Array.from(map.values());
         });
-        setMorePage((p) => p + 1);
+        setDiscoveryPage((p) => p + 1);
       }
     } catch (err) {
-      console.warn('Could not fetch more related videos for Home:', err);
+      console.warn('Could not fetch discovery tracks for Home:', err);
     } finally {
-      setIsLoadingMoreVideos(false);
+      setIsLoadingDiscovery(false);
     }
-  }, [language, morePage, isLoadingMoreVideos]);
+  }, [language, discoveryPage, isLoadingDiscovery]);
 
-  // Initial fetch for bottom videos or on language change
+  // Initial fetch for bottom algorithmic discovery or on language change
   useEffect(() => {
     let active = true;
     const initialQuery =
       language && language !== 'all'
-        ? `${language} songs official video`
-        : 'trending music videos hits';
-    searchTracks(initialQuery, 1, 10, 'ytmusicapi', 'videos')
+        ? `${language} songs top hits`
+        : 'trending top hits songs';
+    searchTracks(initialQuery, 1, 12, 'ytmusicapi', 'songs')
       .then((res) => {
-        if (active && res.items.length > 0) {
-          setMoreVideos(res.items);
-          setMorePage(2);
+        const clean = filterMusicTracks(res.items);
+        if (active && clean.length > 0) {
+          setDiscoveryTracks(clean);
+          setDiscoveryPage(2);
         }
       })
-      .catch((e) => console.warn('Home bottom videos fetch:', e));
+      .catch((e) => console.warn('Home discovery tracks fetch:', e));
     return () => {
       active = false;
     };
@@ -147,15 +174,15 @@ export const HomeView: React.FC<HomeViewProps> = ({
     if (!el) return;
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting && !isLoadingMoreVideos) {
-          fetchMoreHomeVideos();
+        if (entries[0].isIntersecting && !isLoadingDiscovery) {
+          fetchMoreDiscoveryTracks();
         }
       },
       { rootMargin: '300px' }
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [fetchMoreHomeVideos, isLoadingMoreVideos]);
+  }, [fetchMoreDiscoveryTracks, isLoadingDiscovery]);
 
   // Reusable unified music card renderer
   const renderCard = (track: MusicTrack, queue: MusicTrack[], keyPrefix: string) => {
@@ -260,7 +287,6 @@ export const HomeView: React.FC<HomeViewProps> = ({
                   onClick={() => onLanguageChange(lang.id)}
                   aria-pressed={isActive}
                 >
-                  <span className="lang-pill-icon">{lang.icon}</span>
                   <span className="lang-pill-name">{lang.name}</span>
                   <span className="lang-pill-mobile-name">{lang.mobileName}</span>
                 </button>
@@ -359,7 +385,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
           </div>
 
           <div className="home-cards-scroll">
-            {madeForYouTracks.slice(0, 8).map((track) =>
+            {madeForYouTracks.slice(0, 12).map((track) =>
               renderCard(track, madeForYouTracks, 'made-for-you')
             )}
           </div>
@@ -369,7 +395,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
       {/* SECTION 2: Dynamic Regional & Language Radar */}
       <section className="home-section">
         <div className="home-section-header">
-          <div>
+          <div className="home-section-title-wrap">
             <h2 className="home-section-title">
               <Compass size={18} className="section-title-icon" color="var(--accent-primary)" />
               <span>{language === 'all' ? 'Trending Worldwide' : `Trending in ${selectedLangObj.name}`}</span>
@@ -389,18 +415,13 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
         <div className="home-cards-scroll">
           {isLanguageLoading ? (
-            <div className="home-loading-banner">
-              <Radio size={16} className="spin-animate" color="var(--accent-primary)" />
-              <span>Fetching {selectedLangObj.name} hits...</span>
-            </div>
+            <SkeletonRow count={12} />
           ) : languageTracks.length > 0 ? (
-            languageTracks.slice(0, 8).map((track) =>
+            languageTracks.slice(0, 12).map((track) =>
               renderCard(track, languageTracks, 'lang')
             )
           ) : (
-            <div className="home-loading-banner">
-              <span>Explore music in {selectedLangObj.name}</span>
-            </div>
+            <SkeletonRow count={12} />
           )}
         </div>
       </section>
@@ -409,7 +430,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
       {searchRecQuery && searchRecTracks.length > 0 && (
         <section className="home-section">
           <div className="home-section-header">
-            <div>
+            <div className="home-section-title-wrap">
               <h2 className="home-section-title">
                 <Music size={18} className="section-title-icon" color="var(--accent-primary)" />
                 <span className="section-heading-desktop">Because you searched for "{searchRecQuery}"</span>
@@ -429,7 +450,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
           </div>
 
           <div className="home-cards-scroll">
-            {searchRecTracks.slice(0, 8).map((track) =>
+            {searchRecTracks.slice(0, 12).map((track) =>
               renderCard(track, searchRecTracks, 'rec')
             )}
           </div>
@@ -440,7 +461,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
       {recentTracks && recentTracks.length > 0 && (
         <section className="home-section">
           <div className="home-section-header">
-            <div>
+            <div className="home-section-title-wrap">
               <h2 className="home-section-title">
                 <Clock size={18} color="var(--accent-primary)" />
                 Jump Back In
@@ -450,7 +471,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
           </div>
 
           <div className="home-cards-scroll">
-            {recentTracks.slice(0, 8).map((track) =>
+            {recentTracks.slice(0, 12).map((track) =>
               renderCard(track, recentTracks, 'recent')
             )}
           </div>
@@ -461,7 +482,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
       {themeTracks && themeTracks.length > 0 && (
         <section className="home-section">
           <div className="home-section-header">
-            <div>
+            <div className="home-section-title-wrap">
               <h2 className="home-section-title">
                 <Radio size={18} color="var(--accent-primary)" />
                 {getThemeTitle()}
@@ -473,7 +494,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
           </div>
 
           <div className="home-cards-scroll">
-            {themeTracks.slice(0, 8).map((track) =>
+            {themeTracks.slice(0, 12).map((track) =>
               renderCard(track, themeTracks, 'theme')
             )}
           </div>
@@ -483,7 +504,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
       {/* SECTION 6: New Releases & Fresh Drops */}
       <section className="home-section">
         <div className="home-section-header">
-          <div>
+          <div className="home-section-title-wrap">
             <h2 className="home-section-title">
               <Flame size={18} className="section-title-icon" color="var(--accent-primary)" />
               <span>New Releases &amp; Fresh Drops</span>
@@ -503,101 +524,161 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
         <div className="home-cards-scroll">
           {newReleases.length > 0 ? (
-            newReleases.slice(0, 8).map((track) =>
+            newReleases.slice(0, 12).map((track) =>
               renderCard(track, newReleases, 'nr')
             )
           ) : (
-            <div className="home-loading-banner">
-              <Flame size={16} className="spin-animate" color="var(--accent-primary)" />
-              <span>Fetching latest releases...</span>
-            </div>
+            <SkeletonRow count={12} />
           )}
         </div>
       </section>
 
-      {/* SECTION 7: Curated Playlists & Mixes */}
-      {playlists.length > 0 && (
+      {/* SECTION 7: Real Algorithmic Auto Playlists & Daily Mixes */}
+      {((autoMixes && autoMixes.length > 0) ||
+        playlists.some((p) => p.isCustom && p.tracks && p.tracks.length > 0 && p.name !== 'Late Night Drive' && p.name !== 'My Chill Mix')) && (
         <section className="home-section">
           <div className="home-section-header">
             <div>
               <h2 className="home-section-title">
                 <Disc3 size={18} color="var(--accent-primary)" />
-                Your Playlists &amp; Mixes
-              </h2>
-              <p className="home-section-sub">Custom collections and hand-crafted stations</p>
-            </div>
-          </div>
-
-          <div className="home-cards-scroll">
-            {playlists.map((pl) => (
-              <div
-                key={pl.id}
-                className="music-media-card playlist-card"
-                onClick={() => onOpenPlaylist(pl.id)}
-                role="button"
-                tabIndex={0}
-              >
-                <div className="media-card-artwork">
-                  {pl.coverUrl ? (
-                    <img
-                      src={pl.coverUrl}
-                      alt={pl.name}
-                      className="media-card-img"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src = FALLBACK_ARTWORK;
-                      }}
-                    />
-                  ) : (
-                    <div className="media-card-fallback">
-                      <Music size={28} />
-                    </div>
-                  )}
-                  <button
-                    type="button"
-                    className="media-card-hover-play"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onPlayPlaylist(pl);
-                    }}
-                    title={`Play ${pl.name}`}
-                    aria-label={`Play ${pl.name}`}
-                  >
-                    <Play size={18} fill="currentColor" />
-                  </button>
-                </div>
-                <div className="media-card-meta">
-                  <span className="media-card-type">Playlist</span>
-                  <span className="media-card-title" title={pl.name}>
-                    {pl.name}
-                  </span>
-                  <span className="media-card-artist" title={pl.description || 'Playlist'}>
-                    {pl.tracks.length} {pl.tracks.length === 1 ? 'track' : 'tracks'}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* SECTION 8: More Related Music Videos & Visualizers (Scroll to Discover) */}
-      {moreVideos.length > 0 && (
-        <section className="home-section">
-          <div className="home-section-header">
-            <div>
-              <h2 className="home-section-title">
-                <Video size={18} color="var(--accent-primary)" />
-                Trending Music Videos &amp; Visualizers
+                Made For You &amp; Daily Mixes
               </h2>
               <p className="home-section-sub">
-                Official music videos, acoustic visuals, and live performances
+                Handcrafted stations and personalized mixes tailored to your taste
               </p>
             </div>
           </div>
 
           <div className="home-cards-scroll">
-            {moreVideos.map((track) =>
-              renderCard(track, moreVideos, 'more-vid')
+            {/* Real Auto-Generated Mixes */}
+            {autoMixes &&
+              autoMixes.map((mix) => (
+                <div
+                  key={mix.id}
+                  className="music-media-card playlist-card"
+                  onClick={() => onOpenPlaylist(mix.id)}
+                  role="button"
+                  tabIndex={0}
+                >
+                  <div className="media-card-artwork">
+                    {mix.coverUrl ? (
+                      <img
+                        src={mix.coverUrl}
+                        alt={mix.name}
+                        className="media-card-img"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = FALLBACK_ARTWORK;
+                        }}
+                      />
+                    ) : (
+                      <div className="media-card-fallback">
+                        <Music size={28} />
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      className="media-card-hover-play"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onPlayPlaylist(mix);
+                      }}
+                      title={`Play ${mix.name}`}
+                      aria-label={`Play ${mix.name}`}
+                    >
+                      <Play size={18} fill="currentColor" />
+                    </button>
+                  </div>
+                  <div className="media-card-meta">
+                    <span className="media-card-type">Daily Mix</span>
+                    <span className="media-card-title" title={mix.name}>
+                      {mix.name}
+                    </span>
+                    <span className="media-card-artist" title={mix.description || `${mix.tracks.length} tracks`}>
+                      {mix.description || `${mix.tracks.length} tracks`}
+                    </span>
+                  </div>
+                </div>
+              ))}
+
+            {/* User Custom Created Playlists (Only those containing real tracks) */}
+            {playlists
+              .filter(
+                (p) =>
+                  p.isCustom &&
+                  p.tracks &&
+                  p.tracks.length > 0 &&
+                  p.name !== 'Late Night Drive' &&
+                  p.name !== 'My Chill Mix'
+              )
+              .map((pl) => (
+                <div
+                  key={pl.id}
+                  className="music-media-card playlist-card"
+                  onClick={() => onOpenPlaylist(pl.id)}
+                  role="button"
+                  tabIndex={0}
+                >
+                  <div className="media-card-artwork">
+                    {pl.coverUrl ? (
+                      <img
+                        src={pl.coverUrl}
+                        alt={pl.name}
+                        className="media-card-img"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = FALLBACK_ARTWORK;
+                        }}
+                      />
+                    ) : (
+                      <div className="media-card-fallback">
+                        <Music size={28} />
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      className="media-card-hover-play"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onPlayPlaylist(pl);
+                      }}
+                      title={`Play ${pl.name}`}
+                      aria-label={`Play ${pl.name}`}
+                    >
+                      <Play size={18} fill="currentColor" />
+                    </button>
+                  </div>
+                  <div className="media-card-meta">
+                    <span className="media-card-type">Your Playlist</span>
+                    <span className="media-card-title" title={pl.name}>
+                      {pl.name}
+                    </span>
+                    <span className="media-card-artist" title={pl.description || `${pl.tracks.length} tracks`}>
+                      {pl.tracks.length} {pl.tracks.length === 1 ? 'track' : 'tracks'}
+                    </span>
+                  </div>
+                </div>
+              ))}
+          </div>
+        </section>
+      )}
+
+      {/* SECTION 8: Recommended Radio & Discovery (Pure music tracks only) */}
+      {discoveryTracks.length > 0 && (
+        <section className="home-section">
+          <div className="home-section-header">
+            <div>
+              <h2 className="home-section-title">
+                <Radio size={18} color="var(--accent-primary)" />
+                Recommended Radio &amp; Discovery
+              </h2>
+              <p className="home-section-sub">
+                Fresh songs and popular favorites attuned to your region
+              </p>
+            </div>
+          </div>
+
+          <div className="home-cards-scroll">
+            {discoveryTracks.map((track) =>
+              renderCard(track, discoveryTracks, 'disc-track')
             )}
           </div>
         </section>
@@ -605,19 +686,18 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
       {/* Infinite Scroll Bottom Sentinel / Loader */}
       <div className="home-bottom-scroll-trigger" ref={bottomSentinelRef}>
-        {isLoadingMoreVideos ? (
-          <div className="home-loading-banner">
-            <Loader2 size={16} className="spin-animate" color="var(--accent-primary)" />
-            <span>Discovering more related music & videos...</span>
+        {isLoadingDiscovery ? (
+          <div className="home-cards-scroll">
+            <SkeletonRow count={4} />
           </div>
         ) : (
           <button
             type="button"
             className="home-load-more-btn"
-            onClick={fetchMoreHomeVideos}
+            onClick={fetchMoreDiscoveryTracks}
           >
-            <Video size={14} />
-            <span>Fetch More Related Videos &amp; Tracks</span>
+            <Radio size={14} />
+            <span>Discover More Songs</span>
           </button>
         )}
       </div>

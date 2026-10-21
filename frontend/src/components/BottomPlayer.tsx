@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Play,
   Pause,
@@ -79,6 +79,11 @@ export const BottomPlayer: React.FC<BottomPlayerProps> = ({
 }) => {
   const [showQualityMenu, setShowQualityMenu] = useState(false);
 
+  // If no music is playing/loaded, do not render player to save screen space
+  if (!currentTrack) {
+    return null;
+  }
+
   // Close quality menu if playback queue is opened to prevent overlapping
   useEffect(() => {
     if (showQueue) {
@@ -98,9 +103,34 @@ export const BottomPlayer: React.FC<BottomPlayerProps> = ({
     onSeek(val);
   };
 
+  const [hoverPosition, setHoverPosition] = useState<{ xPercent: number; time: number } | null>(null);
+  const scrubberWrapRef = useRef<HTMLDivElement>(null);
+
   const effectiveDuration = duration > 0 ? duration : currentTrack?.durationSeconds || 100;
   const progressPercent = effectiveDuration > 0 ? (currentTime / effectiveDuration) * 100 : 0;
   const qualityLabel = getQualityLabel(quality);
+
+  const handleScrubberMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!scrubberWrapRef.current || effectiveDuration <= 0) return;
+    const rect = scrubberWrapRef.current.getBoundingClientRect();
+    const clampedX = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+    const pct = rect.width > 0 ? (clampedX / rect.width) * 100 : 0;
+    const time = (pct / 100) * effectiveDuration;
+    setHoverPosition({ xPercent: pct, time });
+  };
+
+  const handleScrubberMouseLeave = () => {
+    setHoverPosition(null);
+  };
+
+  const handleScrubberClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!scrubberWrapRef.current || effectiveDuration <= 0) return;
+    const rect = scrubberWrapRef.current.getBoundingClientRect();
+    const clampedX = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+    const pct = rect.width > 0 ? clampedX / rect.width : 0;
+    const targetTime = pct * effectiveDuration;
+    onSeek(targetTime);
+  };
 
   return (
     <footer className="pro-bottom-player" aria-label="Playback Controls">
@@ -303,7 +333,21 @@ export const BottomPlayer: React.FC<BottomPlayerProps> = ({
         {/* Timeline Scrubber */}
         <div className="scrubber-bar-row">
           <span className="scrubber-time-label current">{formatTime(currentTime)}</span>
-          <div className="scrubber-track-wrap">
+          <div
+            ref={scrubberWrapRef}
+            className="scrubber-track-wrap"
+            onMouseMove={handleScrubberMouseMove}
+            onMouseLeave={handleScrubberMouseLeave}
+            onClick={handleScrubberClick}
+          >
+            {hoverPosition !== null && currentTrack && (
+              <div
+                className="scrubber-hover-tooltip"
+                style={{ left: `${hoverPosition.xPercent}%` }}
+              >
+                <span className="hover-time-text">{formatTime(hoverPosition.time)}</span>
+              </div>
+            )}
             <input
               type="range"
               className="pro-scrubber-slider"

@@ -14,7 +14,7 @@ export interface MusicTrack {
 
 export type SearchFilterType = 'all' | 'songs' | 'artists' | 'albums' | 'playlists' | 'new_releases';
 
-export type ThemePalette = 'aurora' | 'cyber' | 'amber';
+export type ThemePalette = 'noir' | 'amber' | 'aurora' | 'cyber';
 
 export type RepeatMode = 'off' | 'all' | 'one';
 
@@ -79,3 +79,26 @@ export interface SearchDiagnostics {
   timestamp: string;
   error?: string | null;
 }
+
+export interface UserProfile {
+  id: string;
+  displayName: string;
+  email?: string;
+  phoneNumber?: string;
+  username?: string;
+  photoUrl?: string;
+  provider: 'google' | 'github' | 'twitter' | 'phone' | 'guest';
+  createdAt: string;
+}
+
+export interface PlaybackSession {
+  track: MusicTrack;
+  currentTime: number;
+  duration?: number;
+  queue: MusicTrack[];
+  savedAt: number;
+  isPlaying?: boolean;
+  deviceId?: string;
+  deviceName?: string;
+}
+

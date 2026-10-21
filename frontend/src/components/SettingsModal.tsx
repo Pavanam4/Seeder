@@ -27,6 +27,7 @@ interface SettingsModalProps {
 }
 
 const THEMES: { id: ThemePalette; name: string; dotColor: string; desc: string }[] = [
+  { id: 'noir', name: 'Midnight Pure Black (OLED)', dotColor: '#ffffff', desc: 'Ultra-luxurious pure OLED deep black with frosted acrylic blur' },
   { id: 'amber', name: 'Warm Amber', dotColor: '#F59E0B', desc: 'Golden amber glow with deep obsidian tones' },
   { id: 'aurora', name: 'Emerald Aurora', dotColor: '#10B981', desc: 'Vibrant neon green inspired by northern lights' },
   { id: 'cyber', name: 'Cyber Violet', dotColor: '#8B5CF6', desc: 'Futuristic purple & deep electric synthwave' },
