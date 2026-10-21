@@ -860,7 +860,7 @@ export const PlayerTestPanel = forwardRef<PlayerHandle, PlayerTestPanelProps>(
     useEffect(() => {
       if (!selectedTrack) {
         userInitiatedPauseRef.current = true;
-        silentAudioRef.current?.pause();
+        mobileBackgroundPlay.stopKeepAlive();
         try {
           internalPlayerRef.current?.stopVideo?.();
           internalPlayerRef.current?.pauseVideo?.();
@@ -877,7 +877,13 @@ export const PlayerTestPanel = forwardRef<PlayerHandle, PlayerTestPanelProps>(
       () => ({
         play: () => {
           userInitiatedPauseRef.current = false;
-          silentAudioRef.current?.play()?.catch(() => {});
+          mobileBackgroundPlay.startKeepAlive(() => {
+            if (isPlayingRef.current && !userInitiatedPauseRef.current) {
+              try {
+                internalPlayerRef.current?.playVideo?.();
+              } catch (e) {}
+            }
+          });
           try {
             internalPlayerRef.current?.playVideo?.();
           } catch (e) {
@@ -886,7 +892,7 @@ export const PlayerTestPanel = forwardRef<PlayerHandle, PlayerTestPanelProps>(
         },
         pause: () => {
           userInitiatedPauseRef.current = true;
-          silentAudioRef.current?.pause();
+          mobileBackgroundPlay.stopKeepAlive();
           try {
             internalPlayerRef.current?.pauseVideo?.();
           } catch (e) {
@@ -895,7 +901,7 @@ export const PlayerTestPanel = forwardRef<PlayerHandle, PlayerTestPanelProps>(
         },
         stop: () => {
           userInitiatedPauseRef.current = true;
-          silentAudioRef.current?.pause();
+          mobileBackgroundPlay.stopKeepAlive();
           try {
             internalPlayerRef.current?.stopVideo?.();
             internalPlayerRef.current?.pauseVideo?.();
